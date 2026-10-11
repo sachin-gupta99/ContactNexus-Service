@@ -13,23 +13,17 @@ Config is sourced from **AWS Systems Manager Parameter Store** — same pattern 
 - AWS SDK v2 — SSM Parameter Store for secrets/config
 - Lombok, Jakarta Bean Validation
 
-## Parameter Store setup
+## Parameter Store
 
-Create three parameters in AWS SSM (region `ap-south-1`), using **SecureString** for the password:
+Three parameters are read at startup (region `ap-south-1`):
 
-| Parameter | Type | Value |
-| --- | --- | --- |
-| `/ContactNexus/Service/postgres-db/url` | String | `jdbc:postgresql://<host>/<db>?sslmode=require&channelBinding=require` |
-| `/ContactNexus/Service/postgres-db/username` | String | `neondb_owner` |
-| `/ContactNexus/Service/postgres-db/password` | SecureString | `<neon-password>` |
+| Parameter | Type |
+| --- | --- |
+| `/ContactNexus/database/url` | String |
+| `/ContactNexus/database/username` | String |
+| `/ContactNexus/database/password` | SecureString |
 
-Quick CLI:
-
-```bash
-aws ssm put-parameter --name /ContactNexus/Service/postgres-db/url      --type String       --value 'jdbc:postgresql://ep-...neon.tech/contact-nexus?sslmode=require&channelBinding=require'
-aws ssm put-parameter --name /ContactNexus/Service/postgres-db/username --type String       --value 'neondb_owner'
-aws ssm put-parameter --name /ContactNexus/Service/postgres-db/password --type SecureString  --value '<secret>'
-```
+The JDBC URL should be the **direct** (unpooled) Neon host — Hikari manages pooling on the app side.
 
 ## Credentials
 
@@ -39,7 +33,7 @@ The app uses `DefaultCredentialsProvider`, so any of these works:
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` env vars
 - EC2/ECS task role (production) — preferred, no keys on the box
 
-The IAM identity needs `ssm:GetParameter` on the three paths above (plus `kms:Decrypt` on the key used for the SecureString).
+The IAM identity needs `ssm:GetParameter` on `/ContactNexus/database/*` plus `kms:Decrypt` on the key used for the SecureString.
 
 ## Run locally
 
@@ -96,8 +90,8 @@ src/main/java/com/sachingupta/contactnexus/
 
 ## Roadmap
 
-- [ ] Spring Security + JWT (replace `X-User-Id` header)
+- [ ] Spring Security + JWT (`/ContactNexus/jwt/secret` already in SSM)
 - [ ] User service and ownership checks
-- [ ] Image upload (S3)
+- [ ] Image upload — S3 (`/ContactNexus/s3/bucketName`, `/ContactNexus/s3/region` already in SSM)
 - [ ] Dockerfile + ECS Fargate task definition
 - [ ] Terraform module for SSM parameters + ECS deployment

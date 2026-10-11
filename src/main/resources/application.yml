@@ -16,9 +16,9 @@ aws:
     region: ap-south-1
 
 db:
-  url: /ContactNexus/Service/postgres-db/url
-  username: /ContactNexus/Service/postgres-db/username
-  password: /ContactNexus/Service/postgres-db/password
+  url: /ContactNexus/database/url
+  username: /ContactNexus/database/username
+  password: /ContactNexus/database/password
   driver-class-name: org.postgresql.Driver
 
 server:
