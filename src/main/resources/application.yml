@@ -2,6 +2,15 @@ spring:
   application:
     name: contactnexus-service
 
+  servlet:
+    multipart:
+      # Defaults are 1MB/10MB; a typical phone photo blows past 1MB and Tomcat
+      # rejects it with a bare 413 that carries no CORS headers, which surfaces
+      # in the browser as a misleading CORS error. Keep in sync with
+      # MAX_IMAGE_BYTES in ContactNexus-UI/src/components/ImagePicker.jsx.
+      max-file-size: 5MB
+      max-request-size: 10MB
+
   jpa:
     hibernate:
       ddl-auto: update
@@ -20,6 +29,21 @@ db:
   username: /ContactNexus/database/username
   password: /ContactNexus/database/password
   driver-class-name: org.postgresql.Driver
+
+cors:
+  # ContactNexus-UI dev server (vite.config.js pins 3000; 5173 is Vite's fallback)
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+
+jwt:
+  # Resolution order: this value, then the SSM parameter, then an ephemeral key
+  # (dev only - an ephemeral key invalidates every token on restart).
+  secret: ${JWT_SECRET:}
+  secret-parameter: /ContactNexus/jwt/secret
+  ttl: PT24H
+
+app:
+  upload-dir: ${UPLOAD_DIR:uploads}
+  public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
 
 server:
   port: ${PORT:8080}
