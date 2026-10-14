@@ -95,3 +95,4 @@ src/main/java/com/sachingupta/contactnexus/
 - [ ] Image upload — S3 (`/ContactNexus/s3/bucketName`, `/ContactNexus/s3/region` already in SSM)
 - [ ] Dockerfile + ECS Fargate task definition
 - [ ] Terraform module for SSM parameters + ECS deployment
+<!-- last-touch: 2026-10-14 -->
