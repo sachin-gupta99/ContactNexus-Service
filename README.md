@@ -96,3 +96,5 @@ src/main/java/com/sachingupta/contactnexus/
 - [ ] Dockerfile + ECS Fargate task definition
 - [ ] Terraform module for SSM parameters + ECS deployment
 <!-- last-touch: 2026-10-14 -->
+
+<!-- heartbeat: 2026-11-06 -->
