@@ -3,7 +3,12 @@ package com.sachingupta.contactnexus.user;
 import com.sachingupta.contactnexus.common.ConflictException;
 import com.sachingupta.contactnexus.common.NotFoundException;
 import com.sachingupta.contactnexus.security.JwtService;
+import com.sachingupta.contactnexus.security.JwtService.IssuedAccessToken;
+import com.sachingupta.contactnexus.security.RefreshTokenService;
+import com.sachingupta.contactnexus.security.RefreshTokenService.IssuedRefreshToken;
+import com.sachingupta.contactnexus.security.RefreshTokenService.RotationResult;
 import com.sachingupta.contactnexus.user.dto.*;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -11,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Duration;
 import java.util.Locale;
 
 @Service
@@ -21,9 +27,10 @@ public class UserService {
     private final UserRepository users;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final RefreshTokenService refreshTokenService;
     private final AvatarStorage avatarStorage;
 
-    public AuthResponse signup(SignupRequest req) {
+    public AuthResult signup(SignupRequest req, HttpServletRequest request) {
         String email = normalize(req.email());
         if (users.existsByEmailIgnoreCase(email)) {
             throw new ConflictException("An account with email %s already exists".formatted(email));
@@ -40,11 +47,10 @@ public class UserService {
         user.setProfile(profile);
 
         User saved = users.save(user);
-        return new AuthResponse(jwtService.issue(saved), UserResponse.from(saved));
+        return issueFor(saved, request);
     }
 
-    @Transactional(readOnly = true)
-    public AuthResponse login(LoginRequest req) {
+    public AuthResult login(LoginRequest req, HttpServletRequest request) {
         // Same message either way so the response cannot be used to enumerate accounts.
         User user = users.findByEmailIgnoreCase(normalize(req.email()))
                 .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
@@ -53,7 +59,21 @@ public class UserService {
             throw new BadCredentialsException("Invalid email or password");
         }
 
-        return new AuthResponse(jwtService.issue(user), UserResponse.from(user));
+        return issueFor(user, request);
+    }
+
+    public AuthResult refresh(String rawRefreshToken, HttpServletRequest request) {
+        RotationResult rotation = refreshTokenService.rotate(rawRefreshToken, request);
+        IssuedAccessToken access = jwtService.issueAccessToken(rotation.user());
+        AuthResponse body = new AuthResponse(
+                access.token(),
+                access.ttl().getSeconds(),
+                UserResponse.from(rotation.user()));
+        return new AuthResult(body, rotation.refreshToken().rawToken(), rotation.refreshToken().ttl());
+    }
+
+    public void logout(String rawRefreshToken) {
+        refreshTokenService.revoke(rawRefreshToken);
     }
 
     @Transactional(readOnly = true)
@@ -74,6 +94,16 @@ public class UserService {
         profile.setImageUrl(imageUrl);
 
         return imageUrl;
+    }
+
+    private AuthResult issueFor(User user, HttpServletRequest request) {
+        IssuedAccessToken access = jwtService.issueAccessToken(user);
+        IssuedRefreshToken refresh = refreshTokenService.issueFor(user, request);
+        AuthResponse body = new AuthResponse(
+                access.token(),
+                access.ttl().getSeconds(),
+                UserResponse.from(user));
+        return new AuthResult(body, refresh.rawToken(), refresh.ttl());
     }
 
     private User requireById(Long id) {
@@ -108,4 +138,11 @@ public class UserService {
         profile.setImageUrl(dto.imageUrl());
         return profile;
     }
+
+    /**
+     * Carries the client-facing body plus the raw refresh token the controller
+     * needs to write into the HttpOnly cookie. The service does not touch the
+     * response directly so it stays easy to test.
+     */
+    public record AuthResult(AuthResponse body, String refreshToken, Duration refreshTtl) {}
 }
