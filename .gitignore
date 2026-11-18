@@ -38,3 +38,6 @@ Thumbs.db
 # Local Spring Boot overrides
 application-local.yml
 application-local.properties
+
+# Locally stored avatar uploads (user-supplied images, never commit)
+uploads/

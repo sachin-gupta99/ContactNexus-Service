@@ -1,0 +1,69 @@
+package com.sachingupta.contactnexus.user;
+
+import com.sachingupta.contactnexus.security.AuthUser;
+import com.sachingupta.contactnexus.security.RefreshCookie;
+import com.sachingupta.contactnexus.user.UserService.AuthResult;
+import com.sachingupta.contactnexus.user.dto.AuthResponse;
+import com.sachingupta.contactnexus.user.dto.LoginRequest;
+import com.sachingupta.contactnexus.user.dto.SignupRequest;
+import com.sachingupta.contactnexus.user.dto.UserResponse;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/v1/auth")
+@RequiredArgsConstructor
+public class AuthController {
+
+    private final UserService service;
+    private final RefreshCookie refreshCookie;
+
+    @PostMapping("/signup")
+    @ResponseStatus(HttpStatus.CREATED)
+    public AuthResponse signup(@Valid @RequestBody SignupRequest body,
+                               HttpServletRequest request,
+                               HttpServletResponse response) {
+        return writeResult(service.signup(body, request), response);
+    }
+
+    @PostMapping("/login")
+    public AuthResponse login(@Valid @RequestBody LoginRequest body,
+                              HttpServletRequest request,
+                              HttpServletResponse response) {
+        return writeResult(service.login(body, request), response);
+    }
+
+    /**
+     * Rotates the refresh token on the cookie and returns a fresh access token.
+     * The old cookie value is marked revoked server-side and replaced with a new
+     * one in the same family; a replay of the old value trips reuse detection.
+     */
+    @PostMapping("/refresh")
+    public AuthResponse refresh(HttpServletRequest request, HttpServletResponse response) {
+        String raw = refreshCookie.read(request);
+        return writeResult(service.refresh(raw, request), response);
+    }
+
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(HttpServletRequest request, HttpServletResponse response) {
+        String raw = refreshCookie.read(request);
+        service.logout(raw);
+        refreshCookie.clear(response);
+    }
+
+    @GetMapping("/me")
+    public UserResponse me(@AuthenticationPrincipal AuthUser principal) {
+        return service.getById(principal.getId());
+    }
+
+    private AuthResponse writeResult(AuthResult result, HttpServletResponse response) {
+        refreshCookie.write(response, result.refreshToken(), result.refreshTtl());
+        return result.body();
+    }
+}
