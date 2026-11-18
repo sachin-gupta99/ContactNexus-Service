@@ -43,7 +43,14 @@ public class RefreshTokenService {
      * Rotate: validate the incoming token, mark it replaced, issue a new one in the
      * same family. If the incoming token is already revoked, treat it as reuse and
      * revoke the whole family.
+     *
+     * <p>{@code noRollbackFor} is critical: the reuse-detection branch deliberately
+     * writes {@code revokeFamily} and then throws {@link BadCredentialsException}
+     * to produce a 401. Without this, the default rollback semantics of
+     * {@code @Transactional} would undo the family revocation, leaving the
+     * attacker's rotated tokens intact.
      */
+    @Transactional(noRollbackFor = BadCredentialsException.class)
     public RotationResult rotate(String rawToken, HttpServletRequest request) {
         if (rawToken == null || rawToken.isBlank()) {
             throw new BadCredentialsException("Missing refresh token");
