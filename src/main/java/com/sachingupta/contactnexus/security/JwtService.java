@@ -15,27 +15,30 @@ import java.util.Date;
 public class JwtService {
 
     private final SecretKey key;
-    private final Duration ttl;
+    private final Duration accessTtl;
 
-    public JwtService(SecretKey jwtSigningKey, @Value("${jwt.ttl:PT24H}") Duration ttl) {
+    public JwtService(SecretKey jwtSigningKey, @Value("${jwt.access-ttl:PT15M}") Duration accessTtl) {
         this.key = jwtSigningKey;
-        this.ttl = ttl;
+        this.accessTtl = accessTtl;
     }
 
     /**
-     * Subject is the email because the UI decodes it client-side to identify the
-     * signed-in user; the id rides along as a claim to save a lookup.
+     * Subject is the email so the auth filter can load the user by username; the
+     * id rides along as a claim to save a lookup where the controller already
+     * holds the principal.
      */
-    public String issue(User user) {
+    public IssuedAccessToken issueAccessToken(User user) {
         Instant now = Instant.now();
-        return Jwts.builder()
+        Instant expiresAt = now.plus(accessTtl);
+        String token = Jwts.builder()
                 .subject(user.getEmail())
                 .claim("uid", user.getId())
                 .claim("name", user.getName())
                 .issuedAt(Date.from(now))
-                .expiration(Date.from(now.plus(ttl)))
+                .expiration(Date.from(expiresAt))
                 .signWith(key)
                 .compact();
+        return new IssuedAccessToken(token, expiresAt, accessTtl);
     }
 
     /**
@@ -50,4 +53,6 @@ public class JwtService {
                 .getPayload();
         return claims.getSubject();
     }
+
+    public record IssuedAccessToken(String token, Instant expiresAt, Duration ttl) {}
 }

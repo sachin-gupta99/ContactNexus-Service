@@ -34,13 +34,20 @@ public class SecurityConfig {
                 // also registered at HIGHEST_PRECEDENCE there, so preflights are answered
                 // before this chain runs; this keeps the chain correct on its own terms.
                 .cors(Customizer.withDefaults())
-                // No cookies are used, so there is no CSRF vector to protect.
+                // Only the refresh cookie is used by the server; the access token rides in
+                // the Authorization header. The refresh endpoint is the only non-GET that
+                // reads the cookie and it has its own rotation + reuse-detection, which
+                // is a stronger replay defence than a CSRF token here.
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .formLogin(form -> form.disable())
                 .httpBasic(basic -> basic.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/signup", "/api/v1/auth/login").permitAll()
+                        .requestMatchers(
+                                "/api/v1/auth/signup",
+                                "/api/v1/auth/login",
+                                "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
                         .requestMatchers("/uploads/**").permitAll()
                         .anyRequest().authenticated())

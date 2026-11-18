@@ -1,6 +1,7 @@
 package com.sachingupta.contactnexus.user.dto;
 
 public record AuthResponse(
-        String token,
+        String accessToken,
+        long expiresInSeconds,
         UserResponse user) {
 }
