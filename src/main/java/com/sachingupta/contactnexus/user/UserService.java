@@ -62,6 +62,15 @@ public class UserService {
         return issueFor(user, request);
     }
 
+    /**
+     * {@code noRollbackFor} must be here, not just on {@code RefreshTokenService.rotate()}:
+     * this method's {@code @Transactional} (inherited from the class) opens the outer
+     * transaction, so its rollback rules are the ones Spring consults when
+     * {@code rotate()} throws. Without this, the reuse-detection {@code revokeFamily}
+     * write inside {@code rotate()} would be rolled back and the attacker's rotated
+     * token would stay valid.
+     */
+    @Transactional(noRollbackFor = BadCredentialsException.class)
     public AuthResult refresh(String rawRefreshToken, HttpServletRequest request) {
         RotationResult rotation = refreshTokenService.rotate(rawRefreshToken, request);
         IssuedAccessToken access = jwtService.issueAccessToken(rotation.user());
