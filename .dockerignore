@@ -1,0 +1,16 @@
+target/
+uploads/
+.git/
+.github/
+.idea/
+.vscode/
+*.iml
+.DS_Store
+.env
+.env.*
+!.env.example
+Dockerfile
+.dockerignore
+README.md
+DEPLOY.md
+LICENSE

@@ -1,0 +1,43 @@
+# Fly.io configuration. Change `app` to your chosen name before `fly launch`.
+# Region: bom = Mumbai (closest to Neon's ap-south-1 default). Change if your
+# Neon project is elsewhere; cross-region hops add latency on every query.
+app = "contactnexus-service"
+primary_region = "bom"
+
+[build]
+  # Multi-stage Dockerfile produces the runtime image.
+  dockerfile = "Dockerfile"
+
+[env]
+  # Production cookie flags: cross-origin UI => SameSite=None + Secure=true.
+  # If the UI is routed through Vercel rewrites so the browser sees same-origin,
+  # these can be lowered back to Lax + false, but None/true is the safe default.
+  JWT_REFRESH_COOKIE_SECURE = "true"
+  JWT_REFRESH_COOKIE_SAME_SITE = "None"
+  # Override at deploy time with `fly secrets set CORS_ALLOWED_ORIGINS=...`.
+  # Comma-separated. Never use "*" with allowCredentials=true.
+  CORS_ALLOWED_ORIGINS = "https://contactnexus.vercel.app"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Scale-to-zero: machine stops after a minute idle, restarts on next request.
+  # First request after idle eats a ~20s Spring Boot cold start. Flip to
+  # `auto_stop_machines = false` if the cold start is a problem for demos.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "40s"
+    interval = "30s"
+    method = "GET"
+    path = "/actuator/health"
+    timeout = "5s"
+
+[[vm]]
+  # 512MB is the smallest size that holds Spring Boot + Hibernate without OOM
+  # once we trim the heap in the Dockerfile. Free allowance covers up to three
+  # shared-cpu-1x machines; this uses one.
+  size = "shared-cpu-1x"
+  memory = "512mb"
