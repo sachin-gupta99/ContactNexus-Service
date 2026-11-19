@@ -1,0 +1,49 @@
+# Render blueprint - keeps the service configuration in git so a fresh Render
+# account can bring the exact same environment up without clicking around the
+# dashboard. Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: contactnexus-service
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+
+    # Render builds from the Dockerfile at the repo root. Keeping it simple so
+    # `docker build .` works identically in CI, locally, and here.
+    dockerfilePath: ./Dockerfile
+
+    # Spring Boot actuator endpoint. Render retries until it returns 200 before
+    # routing traffic to a new deploy, so a failing migration fails the release
+    # without flipping production over.
+    healthCheckPath: /actuator/health
+
+    # Allow all common HTTP methods + the Authorization header for the bearer
+    # token and the Cookie/Set-Cookie pair for the refresh flow. Origins are
+    # locked via CORS_ALLOWED_ORIGINS below, not here.
+    envVars:
+      # Short-lived access tokens ride in the Authorization header, so the
+      # cookie only exists for /api/v1/auth. Flags below are the cross-origin
+      # defaults: Vercel UI on *.vercel.app <-> Render API on *.onrender.com.
+      - key: JWT_REFRESH_COOKIE_SECURE
+        value: "true"
+      - key: JWT_REFRESH_COOKIE_SAME_SITE
+        value: None
+
+      # Comma-separated, no trailing slash. Never use "*" with allowCredentials.
+      # Override in the dashboard to add a staging origin later.
+      - key: CORS_ALLOWED_ORIGINS
+        value: https://contactnexus.vercel.app
+
+      # Secrets live in the Render dashboard, not in git. `sync: false` tells
+      # the blueprint "I know this variable, don't overwrite the value the
+      # dashboard already holds" - set these once manually.
+      - key: JWT_SECRET
+        sync: false
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
