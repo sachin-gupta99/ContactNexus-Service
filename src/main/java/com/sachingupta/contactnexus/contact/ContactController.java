@@ -1,11 +1,11 @@
 package com.sachingupta.contactnexus.contact;
 
+import com.sachingupta.contactnexus.common.PageResponse;
 import com.sachingupta.contactnexus.contact.dto.ContactRequest;
 import com.sachingupta.contactnexus.contact.dto.ContactResponse;
 import com.sachingupta.contactnexus.security.AuthUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -22,10 +22,11 @@ public class ContactController {
     private final ContactService service;
 
     @GetMapping
-    public Page<ContactResponse> list(@AuthenticationPrincipal AuthUser principal,
-                                      @RequestParam(required = false) String q,
-                                      Pageable pageable) {
-        return service.list(principal.getId(), q, pageable).map(ContactResponse::from);
+    public PageResponse<ContactResponse> list(@AuthenticationPrincipal AuthUser principal,
+                                              @RequestParam(required = false) String q,
+                                              Pageable pageable) {
+        return PageResponse.from(
+                service.list(principal.getId(), q, pageable).map(ContactResponse::from));
     }
 
     @GetMapping("/{id}")
