@@ -70,6 +70,17 @@
             <scope>runtime</scope>
         </dependency>
 
+        <!-- Flyway manages schema migrations; Spring Boot 4 / Flyway 10 requires
+             the database-specific module on the classpath in addition to the core. -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+        </dependency>
+
         <!-- AWS SSM Parameter Store -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
