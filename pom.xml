@@ -91,6 +91,15 @@
             <artifactId>flyway-database-postgresql</artifactId>
         </dependency>
 
+        <!-- Token-bucket rate limiting for auth endpoints (login / signup /
+             forgot-password / reset-password). In-memory for a single Render
+             instance; swap to the Redis-backed variant when we go multi-node. -->
+        <dependency>
+            <groupId>com.bucket4j</groupId>
+            <artifactId>bucket4j-core</artifactId>
+            <version>8.10.1</version>
+        </dependency>
+
         <!-- AWS SSM Parameter Store -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
