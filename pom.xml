@@ -45,6 +45,12 @@
             <artifactId>spring-boot-starter-security</artifactId>
         </dependency>
 
+        <!-- Transactional email (password reset + change-confirmation) over SMTP. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-mail</artifactId>
+        </dependency>
+
         <!-- JWT: api is compile-scope, impl/jackson are runtime-only -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>

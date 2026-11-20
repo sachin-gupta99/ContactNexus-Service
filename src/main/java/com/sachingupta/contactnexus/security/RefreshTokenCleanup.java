@@ -9,6 +9,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 
+/**
+ * Nightly sweep for both refresh tokens (expired) and password-reset tokens
+ * (expired OR already used). Keeps the two tables from growing without bound
+ * over the life of the service.
+ */
 @Component
 @RequiredArgsConstructor
 public class RefreshTokenCleanup {
@@ -16,17 +21,21 @@ public class RefreshTokenCleanup {
     private static final Logger log = LoggerFactory.getLogger(RefreshTokenCleanup.class);
 
     private final RefreshTokenRepository refreshTokens;
+    private final PasswordResetTokenRepository passwordResetTokens;
 
-    /**
-     * Expired rows are useless after their family stops rotating; deleting them
-     * keeps the table from growing without bound over the life of the service.
-     */
     @Scheduled(cron = "0 15 3 * * *")
     @Transactional
     public void purgeExpired() {
-        int deleted = refreshTokens.deleteExpiredBefore(Instant.now());
-        if (deleted > 0) {
-            log.info("Purged {} expired refresh tokens", deleted);
+        Instant now = Instant.now();
+
+        int refreshDeleted = refreshTokens.deleteExpiredBefore(now);
+        if (refreshDeleted > 0) {
+            log.info("Purged {} expired refresh tokens", refreshDeleted);
+        }
+
+        int resetDeleted = passwordResetTokens.deleteExpiredOrUsed(now);
+        if (resetDeleted > 0) {
+            log.info("Purged {} expired or used password-reset tokens", resetDeleted);
         }
     }
 }

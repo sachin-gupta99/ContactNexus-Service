@@ -35,6 +35,23 @@ spring:
     baseline-version: 1
     baseline-description: "existing schema from Hibernate ddl-auto"
 
+  # Gmail SMTP for transactional email (password reset + change confirmation).
+  # In prod set MAIL_USERNAME + MAIL_PASSWORD (a Google App Password, not the
+  # account password). Locally leave them unset and app.email.mode defaults to
+  # `console` so reset links are logged instead of sent.
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true
+
 aws:
   ssm:
     region: ap-south-1
@@ -66,6 +83,17 @@ jwt:
 app:
   upload-dir: ${UPLOAD_DIR:uploads}
   public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
+  # Public URL of the UI - used to build password reset links that land users
+  # back on /auth?mode=reset&token=... in the SPA.
+  base-url: ${APP_BASE_URL:http://localhost:3000}
+  email:
+    # `smtp` = send via Gmail (prod), `console` = log to stdout (dev default).
+    mode: ${APP_EMAIL_MODE:console}
+    from: ${APP_EMAIL_FROM:no-reply@contactnexus.local}
+    from-name: ${APP_EMAIL_FROM_NAME:ContactNexus}
+  password-reset:
+    # Short enough to limit a stolen inbox, long enough for "do it after lunch".
+    ttl: PT30M
 
 server:
   port: ${PORT:8080}
