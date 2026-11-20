@@ -76,11 +76,15 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Flyway manages schema migrations; Spring Boot 4 / Flyway 10 requires
-             the database-specific module on the classpath in addition to the core. -->
+        <!-- Flyway manages schema migrations. Spring Boot 4 split autoconfiguration
+             into per-technology modules, so `flyway-core` alone gives you the Flyway
+             library with NO FlywayAutoConfiguration - migrations silently never run.
+             The starter pulls spring-boot-flyway (the autoconfig) + flyway-core; the
+             database-specific module is still required on top of it.
+             https://docs.spring.io/spring-boot/how-to/data-initialization.html -->
         <dependency>
-            <groupId>org.flywaydb</groupId>
-            <artifactId>flyway-core</artifactId>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-flyway</artifactId>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
