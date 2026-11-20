@@ -40,9 +40,11 @@ services:
       - key: APP_BASE_URL
         value: https://contactnexus.vercel.app
 
-      # Send real email in prod. `console` would just log the link to stdout.
+      # Render's free tier blocks outbound SMTP, so prod uses the SendGrid
+      # HTTPS API. `smtp` still works on paid Render plans or locally with
+      # Gmail. `console` is the dev default - logs the reset link to stdout.
       - key: APP_EMAIL_MODE
-        value: smtp
+        value: sendgrid
       - key: APP_EMAIL_FROM_NAME
         value: ContactNexus
 
@@ -58,13 +60,18 @@ services:
       - key: DB_PASSWORD
         sync: false
 
-      # Gmail SMTP for transactional email (password reset + change
-      # confirmation). MAIL_PASSWORD is a Google App Password, NOT the account
-      # password - requires 2-Step Verification on the Gmail account.
-      # APP_EMAIL_FROM is typically the same Gmail address as MAIL_USERNAME.
+      # SendGrid Mail Send v3 API key. Scope the key to "Mail Send" only.
+      # APP_EMAIL_FROM must be the verified sender address on SendGrid (if you
+      # do not own a domain, use SendGrid's Single Sender Verification against
+      # the same email you own, e.g. a Gmail address).
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: APP_EMAIL_FROM
+        sync: false
+
+      # Kept for the SMTP code path - set these only if you flip APP_EMAIL_MODE
+      # back to `smtp` (requires a Render paid plan or running elsewhere).
       - key: MAIL_USERNAME
         sync: false
       - key: MAIL_PASSWORD
-        sync: false
-      - key: APP_EMAIL_FROM
         sync: false

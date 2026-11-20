@@ -87,10 +87,14 @@ app:
   # back on /auth?mode=reset&token=... in the SPA.
   base-url: ${APP_BASE_URL:http://localhost:3000}
   email:
-    # `smtp` = send via Gmail (prod), `console` = log to stdout (dev default).
+    # `console` (dev default, logs to stdout), `sendgrid` (prod - HTTPS API,
+    # works on Render's free tier), or `smtp` (Gmail etc., requires outbound
+    # SMTP egress which Render free blocks).
     mode: ${APP_EMAIL_MODE:console}
     from: ${APP_EMAIL_FROM:no-reply@contactnexus.local}
     from-name: ${APP_EMAIL_FROM_NAME:ContactNexus}
+    sendgrid:
+      api-key: ${SENDGRID_API_KEY:}
   password-reset:
     # Short enough to limit a stolen inbox, long enough for "do it after lunch".
     ttl: PT30M
@@ -103,3 +107,12 @@ management:
     web:
       exposure:
         include: health,info
+  health:
+    # Spring Boot auto-registers a MailHealthIndicator whenever
+    # spring-boot-starter-mail is on the classpath. It opens a real SMTP
+    # connection on every /actuator/health call, which blows up on Render
+    # free (no outbound SMTP) and spams the logs with timeouts. Our email
+    # path goes through the SendGrid HTTPS API anyway, so the SMTP probe
+    # tells us nothing.
+    mail:
+      enabled: false
