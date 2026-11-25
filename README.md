@@ -47,6 +47,7 @@ Per-IP token-bucket limiter (`RateLimitFilter`) in front of the auth chain, Buck
 | `/signup` | 5 per hour | Caps mass account creation |
 | `/forgot-password` | 3 per hour | Protects email-provider quota |
 | `/reset-password` | 10 per hour | Defence against token brute force |
+| `POST /change-password` + `DELETE /users/me` (shared) | 10 per 15 min | Both re-check the password; stops a stolen access token being used to brute-force it |
 
 Exceeding the limit returns 429 with an RFC 6585 `Retry-After` header.
 
@@ -60,13 +61,21 @@ Exceeding the limit returns 429 with an RFC 6585 `Retry-After` header.
 | `POST` | `/api/v1/auth/logout` | cookie | revokes server-side, clears cookie |
 | `POST` | `/api/v1/auth/forgot-password` | public | always 200 (enumeration-safe) |
 | `POST` | `/api/v1/auth/reset-password` | public | consumes a reset token, revokes all sessions |
+| `POST` | `/api/v1/auth/change-password` | bearer | `{ currentPassword, newPassword }`; revokes every session, returns fresh tokens for this one, emails a confirmation. 400 if the current password is wrong |
+| `POST` | `/api/v1/auth/logout-all` | bearer | revokes every refresh token for the user, clears cookie, 204 |
 | `GET` | `/api/v1/auth/me` | bearer | current user |
+| `PUT` | `/api/v1/users/me` | bearer | update name + profile fields |
 | `PUT` | `/api/v1/users/me/avatar` | bearer, multipart | uploads avatar to S3, returns `{ imageUrl }` (presigned) |
-| `GET` | `/api/v1/contacts?q=&page=&size=&sort=` | bearer | list (paged, searchable) — returns `PageResponse<ContactResponse>` |
+| `DELETE` | `/api/v1/users/me` | bearer | `{ password }`; deletes the account, its contacts, tokens and avatar. 400 if the password is wrong |
+| `GET` | `/api/v1/contacts?q=&favorite=&page=&size=&sort=` | bearer | list (paged, searchable, `favorite=true` for starred only) — returns `PageResponse<ContactResponse>` |
+| `GET` | `/api/v1/contacts/stats` | bearer | `{ total, favorites, addedThisWeek }` |
 | `GET` | `/api/v1/contacts/{id}` | bearer | fetch one |
 | `POST` | `/api/v1/contacts` | bearer | create |
 | `PUT` | `/api/v1/contacts/{id}` | bearer | update |
+| `PUT` | `/api/v1/contacts/{id}/favorite` | bearer | `{ favorite: true\|false }` |
 | `DELETE` | `/api/v1/contacts/{id}` | bearer | delete |
+
+Password re-checks return **400, not 401**: the session is valid, only the typed password is wrong, and a 401 would make clients try to refresh the session.
 
 ## Schema
 
@@ -78,6 +87,7 @@ Flyway owns the schema (`ddl-auto: validate`). Migrations in `src/main/resources
 | `V2__password_reset_tokens.sql` | `password_reset_tokens` table |
 | `V3__contacts_owner_id_index.sql` | `idx_contacts_owner_id` for paginated list queries |
 | `V4__profile_avatar_s3_key.sql` | `profiles.image_key` for S3 avatars; clears dead local `/uploads` links |
+| `V5__contacts_favorite.sql` | `contacts.favorite` boolean (default `false`) |
 
 `baseline-on-migrate: true` + `baseline-version: 1` means an existing database (e.g. prod Neon populated from the old `ddl-auto: update` era) is stamped at V1 without re-running `V1__init.sql`. Fresh databases execute every migration in full.
 

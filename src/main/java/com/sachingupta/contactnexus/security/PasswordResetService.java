@@ -97,12 +97,21 @@ public class PasswordResetService {
         // dies here. User must sign in again with the new password.
         refreshTokenService.revokeAllForUser(user.getId());
 
+        sendPasswordChangedEmail(user);
+
+        log.info("Password reset completed for user {}", user.getId());
+    }
+
+    /** Also used by the signed-in "change password" flow. */
+    public void sendPasswordChangedEmail(User user) {
         emailSender.send(
                 user.getEmail(),
                 "Your ContactNexus password was changed",
                 passwordChangedEmailHtml(user.getName()));
+    }
 
-        log.info("Password reset completed for user {}", user.getId());
+    public void deleteAllForUser(Long userId) {
+        resetTokens.deleteAllForUser(userId);
     }
 
     private static String hash(String raw) {

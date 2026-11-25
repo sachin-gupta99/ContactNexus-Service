@@ -2,11 +2,16 @@ package com.sachingupta.contactnexus.contact;
 
 import com.sachingupta.contactnexus.common.NotFoundException;
 import com.sachingupta.contactnexus.contact.dto.ContactRequest;
+import com.sachingupta.contactnexus.contact.dto.ContactStats;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -15,13 +20,35 @@ public class ContactService {
 
     private final ContactRepository repository;
 
-    public Page<Contact> list(Long ownerId, String query, Pageable pageable) {
+    @Transactional(readOnly = true)
+    public Page<Contact> list(Long ownerId, String query, boolean favoritesOnly, Pageable pageable) {
+        return repository.search(ownerId, likePattern(query), favoritesOnly, pageable);
+    }
+
+    public Contact setFavorite(Long ownerId, Long id, boolean favorite) {
+        Contact contact = get(ownerId, id);
+        contact.setFavorite(favorite);
+        return contact;
+    }
+
+    @Transactional(readOnly = true)
+    public ContactStats stats(Long ownerId) {
+        return new ContactStats(
+                repository.countByOwnerId(ownerId),
+                repository.countByOwnerIdAndFavoriteTrue(ownerId),
+                repository.countByOwnerIdAndCreatedAtAfter(ownerId, Instant.now().minus(7, ChronoUnit.DAYS)));
+    }
+
+    /** Case-insensitive "contains" pattern; % and _ typed by the user match literally. */
+    private static String likePattern(String query) {
         if (query == null || query.isBlank()) {
-            return repository.findByOwnerId(ownerId, pageable);
+            return "%";
         }
-        return repository
-                .findByOwnerIdAndFirstNameContainingIgnoreCaseOrOwnerIdAndLastNameContainingIgnoreCaseOrOwnerIdAndEmailContainingIgnoreCase(
-                        ownerId, query, ownerId, query, ownerId, query, pageable);
+        String escaped = query.trim().toLowerCase(Locale.ROOT)
+                .replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_");
+        return "%" + escaped + "%";
     }
 
     @Transactional(readOnly = true)

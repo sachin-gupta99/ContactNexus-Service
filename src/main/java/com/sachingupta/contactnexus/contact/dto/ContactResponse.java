@@ -20,6 +20,7 @@ public record ContactResponse(
         String githubUrl,
         String linkedinUrl,
         String instagramUrl,
+        boolean favorite,
         Instant createdAt,
         Instant updatedAt) {
 
@@ -40,6 +41,7 @@ public record ContactResponse(
                 c.getGithubUrl(),
                 c.getLinkedinUrl(),
                 c.getInstagramUrl(),
+                c.isFavorite(),
                 c.getCreatedAt(),
                 c.getUpdatedAt());
     }

@@ -3,6 +3,8 @@ package com.sachingupta.contactnexus.contact;
 import com.sachingupta.contactnexus.common.PageResponse;
 import com.sachingupta.contactnexus.contact.dto.ContactRequest;
 import com.sachingupta.contactnexus.contact.dto.ContactResponse;
+import com.sachingupta.contactnexus.contact.dto.ContactStats;
+import com.sachingupta.contactnexus.contact.dto.FavoriteRequest;
 import com.sachingupta.contactnexus.security.AuthUser;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -24,9 +26,22 @@ public class ContactController {
     @GetMapping
     public PageResponse<ContactResponse> list(@AuthenticationPrincipal AuthUser principal,
                                               @RequestParam(required = false) String q,
+                                              @RequestParam(defaultValue = "false") boolean favorite,
                                               Pageable pageable) {
         return PageResponse.from(
-                service.list(principal.getId(), q, pageable).map(ContactResponse::from));
+                service.list(principal.getId(), q, favorite, pageable).map(ContactResponse::from));
+    }
+
+    @GetMapping("/stats")
+    public ContactStats stats(@AuthenticationPrincipal AuthUser principal) {
+        return service.stats(principal.getId());
+    }
+
+    @PutMapping("/{id}/favorite")
+    public ContactResponse setFavorite(@AuthenticationPrincipal AuthUser principal,
+                                       @PathVariable Long id,
+                                       @Valid @RequestBody FavoriteRequest body) {
+        return ContactResponse.from(service.setFavorite(principal.getId(), id, body.favorite()));
     }
 
     @GetMapping("/{id}")
