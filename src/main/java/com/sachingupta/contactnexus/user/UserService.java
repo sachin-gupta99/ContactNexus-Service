@@ -93,6 +93,26 @@ public class UserService {
     }
 
     /**
+     * Replaces the name and every editable profile field. The avatar is left alone;
+     * it changes only through {@link #updateAvatar}.
+     */
+    public UserResponse updateProfile(Long userId, UpdateProfileRequest req) {
+        User user = requireById(userId);
+        user.setName(req.name().trim());
+
+        if (req.profile() != null) {
+            Profile profile = user.getProfile();
+            if (profile == null) {
+                profile = new Profile();
+                profile.setUser(user);
+                user.setProfile(profile);
+            }
+            applyDetails(profile, req.profile());
+        }
+        return toResponse(user);
+    }
+
+    /**
      * @return a presigned URL for the newly stored avatar
      */
     public String updateAvatar(Long userId, MultipartFile file) {
@@ -161,23 +181,35 @@ public class UserService {
         if (dto == null) {
             return profile;
         }
-        profile.setWork(dto.work());
-        profile.setPhone(dto.phone());
-        profile.setStreet(dto.street());
-        profile.setArea(dto.area());
-        profile.setCity(dto.city());
-        profile.setState(dto.state());
-        profile.setPincode(dto.pincode());
-        profile.setGithub(dto.github());
-        profile.setLinkedin(dto.linkedin());
-        profile.setInstagram(dto.instagram());
-        profile.setLikes(dto.likes());
-        profile.setMovie(dto.movie());
-        profile.setInterests(dto.interests());
-        profile.setBioHeading(dto.bioHeading());
-        profile.setBioDescription(dto.bioDescription());
-        profile.setImageUrl(dto.imageUrl());
+        applyDetails(profile, dto);
+        profile.setImageUrl(clean(dto.imageUrl()));
         return profile;
+    }
+
+    /** Copies every text field except the image, which has its own update path. */
+    private void applyDetails(Profile profile, ProfileDto dto) {
+        profile.setWork(clean(dto.work()));
+        profile.setPhone(clean(dto.phone()));
+        profile.setStreet(clean(dto.street()));
+        profile.setArea(clean(dto.area()));
+        profile.setCity(clean(dto.city()));
+        profile.setState(clean(dto.state()));
+        profile.setPincode(clean(dto.pincode()));
+        profile.setGithub(clean(dto.github()));
+        profile.setLinkedin(clean(dto.linkedin()));
+        profile.setInstagram(clean(dto.instagram()));
+        profile.setLikes(clean(dto.likes()));
+        profile.setMovie(clean(dto.movie()));
+        profile.setInterests(clean(dto.interests()));
+        profile.setBioHeading(clean(dto.bioHeading()));
+        profile.setBioDescription(clean(dto.bioDescription()));
+    }
+
+    /** Trims, and stores blank as null so "cleared" and "never set" look the same. */
+    private static String clean(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     /**

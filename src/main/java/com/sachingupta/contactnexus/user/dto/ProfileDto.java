@@ -5,24 +5,26 @@ import jakarta.validation.constraints.Size;
 
 /**
  * Used for both the profile block on signup and the profile block on responses.
+ * Limits match the column sizes, so oversized input is a 400 rather than a
+ * database error.
  */
 public record ProfileDto(
-        String work,
-        String phone,
-        String street,
-        String area,
-        String city,
-        String state,
-        String pincode,
-        String github,
-        String linkedin,
-        String instagram,
-        String likes,
-        String movie,
-        String interests,
-        String bioHeading,
+        @Size(max = 255) String work,
+        @Size(max = 255) String phone,
+        @Size(max = 255) String street,
+        @Size(max = 255) String area,
+        @Size(max = 255) String city,
+        @Size(max = 255) String state,
+        @Size(max = 255) String pincode,
+        @Size(max = 255) String github,
+        @Size(max = 255) String linkedin,
+        @Size(max = 255) String instagram,
+        @Size(max = 255) String likes,
+        @Size(max = 255) String movie,
+        @Size(max = 255) String interests,
+        @Size(max = 255) String bioHeading,
         @Size(max = 1000) String bioDescription,
-        String imageUrl) {
+        @Size(max = 255) String imageUrl) {
 
     /**
      * @param imageUrl the URL clients should render, already resolved (presigned for
