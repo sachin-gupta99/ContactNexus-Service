@@ -106,6 +106,12 @@
             <artifactId>ssm</artifactId>
             <version>${aws.sdk.version}</version>
         </dependency>
+        <!-- S3 for avatar storage; the module also ships S3Presigner -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>${aws.sdk.version}</version>
+        </dependency>
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>regions</artifactId>

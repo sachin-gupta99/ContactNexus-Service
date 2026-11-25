@@ -48,6 +48,33 @@ curl https://contactnexus-service.onrender.com/actuator/health
 
 Expect `{"status":"UP"}`. If the instance has been idle, the first request takes ~30-45 seconds while the container spins back up.
 
+## Avatar storage (S3)
+
+Avatars live in the private bucket `contact-nexus` (`ap-south-1`, all public access blocked). The database stores only the object key; every API response carries a presigned GET URL valid for 12 hours (`aws.s3.presign-ttl`).
+
+Render is not on AWS, so the app authenticates with an IAM user's access keys. Create a dedicated user with only this policy, not an admin user:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+    "Resource": "arn:aws:s3:::contact-nexus/avatars/*"
+  }]
+}
+```
+
+```bash
+aws iam create-user --user-name contactnexus-app
+aws iam put-user-policy --user-name contactnexus-app --policy-name avatars-rw --policy-document file://avatars-policy.json
+aws iam create-access-key --user-name contactnexus-app
+```
+
+Set the returned keys on the Render service as `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. `S3_BUCKET` / `S3_REGION` default to `contact-nexus` / `ap-south-1`.
+
+No bucket CORS rule is needed: uploads go through the backend, and `<img src>` loads of presigned URLs are not subject to CORS.
+
 ## What's auto-wired after this
 
 | Trigger | Result |

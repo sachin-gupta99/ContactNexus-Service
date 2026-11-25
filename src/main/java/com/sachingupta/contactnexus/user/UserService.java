@@ -14,6 +14,8 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Duration;
@@ -77,7 +79,7 @@ public class UserService {
         AuthResponse body = new AuthResponse(
                 access.token(),
                 access.ttl().getSeconds(),
-                UserResponse.from(rotation.user()));
+                toResponse(rotation.user()));
         return new AuthResult(body, rotation.refreshToken().rawToken(), rotation.refreshToken().ttl());
     }
 
@@ -87,12 +89,15 @@ public class UserService {
 
     @Transactional(readOnly = true)
     public UserResponse getById(Long id) {
-        return UserResponse.from(requireById(id));
+        return toResponse(requireById(id));
     }
 
+    /**
+     * @return a presigned URL for the newly stored avatar
+     */
     public String updateAvatar(Long userId, MultipartFile file) {
         User user = requireById(userId);
-        String imageUrl = avatarStorage.store(userId, file);
+        String key = avatarStorage.store(userId, file);
 
         Profile profile = user.getProfile();
         if (profile == null) {
@@ -100,9 +105,36 @@ public class UserService {
             profile.setUser(user);
             user.setProfile(profile);
         }
-        profile.setImageUrl(imageUrl);
+        String previousKey = profile.getImageKey();
+        profile.setImageKey(key);
+        profile.setImageUrl(null);
 
-        return imageUrl;
+        // Delete the replaced object only once the new key is committed, so a rolled
+        // back transaction never leaves the profile pointing at a deleted object.
+        if (previousKey != null) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    avatarStorage.delete(previousKey);
+                }
+            });
+        }
+
+        return avatarStorage.presignedUrl(key);
+    }
+
+    private UserResponse toResponse(User user) {
+        return UserResponse.from(user, avatarUrlOf(user.getProfile()));
+    }
+
+    private String avatarUrlOf(Profile profile) {
+        if (profile == null) {
+            return null;
+        }
+        if (profile.getImageKey() != null) {
+            return avatarStorage.presignedUrl(profile.getImageKey());
+        }
+        return profile.getImageUrl();
     }
 
     private AuthResult issueFor(User user, HttpServletRequest request) {
@@ -111,7 +143,7 @@ public class UserService {
         AuthResponse body = new AuthResponse(
                 access.token(),
                 access.ttl().getSeconds(),
-                UserResponse.from(user));
+                toResponse(user));
         return new AuthResult(body, refresh.rawToken(), refresh.ttl());
     }
 

@@ -24,7 +24,11 @@ public record ProfileDto(
         @Size(max = 1000) String bioDescription,
         String imageUrl) {
 
-    public static ProfileDto from(Profile p) {
+    /**
+     * @param imageUrl the URL clients should render, already resolved (presigned for
+     *                 S3 avatars) because the entity only holds the object key
+     */
+    public static ProfileDto from(Profile p, String imageUrl) {
         if (p == null) {
             return null;
         }
@@ -44,6 +48,6 @@ public record ProfileDto(
                 p.getInterests(),
                 p.getBioHeading(),
                 p.getBioDescription(),
-                p.getImageUrl());
+                imageUrl);
     }
 }
