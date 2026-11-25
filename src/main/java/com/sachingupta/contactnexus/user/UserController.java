@@ -1,7 +1,9 @@
 package com.sachingupta.contactnexus.user;
 
 import com.sachingupta.contactnexus.security.AuthUser;
+import com.sachingupta.contactnexus.user.dto.UpdateProfileRequest;
 import com.sachingupta.contactnexus.user.dto.UserResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -20,6 +22,12 @@ public class UserController {
     @GetMapping("/me")
     public UserResponse me(@AuthenticationPrincipal AuthUser principal) {
         return service.getById(principal.getId());
+    }
+
+    @PutMapping("/me")
+    public UserResponse updateMe(@AuthenticationPrincipal AuthUser principal,
+                                 @Valid @RequestBody UpdateProfileRequest body) {
+        return service.updateProfile(principal.getId(), body);
     }
 
     @PutMapping(path = "/me/avatar", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
