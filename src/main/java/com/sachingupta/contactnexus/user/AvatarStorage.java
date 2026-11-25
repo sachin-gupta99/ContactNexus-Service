@@ -1,41 +1,61 @@
 package com.sachingupta.contactnexus.user;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import software.amazon.awssdk.core.exception.SdkException;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
+import java.io.InputStream;
+import java.time.Duration;
 import java.util.Locale;
-import java.util.Set;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR;
 
 /**
- * Local-disk avatar storage. Swapped for S3 when profile/image handling lands.
+ * Avatar storage in a private S3 bucket. Only the object key is persisted; clients
+ * get a short-lived presigned GET URL, so the bucket never needs public access.
  */
 @Component
 public class AvatarStorage {
 
-    private static final Set<String> ALLOWED_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif");
+    private static final Logger log = LoggerFactory.getLogger(AvatarStorage.class);
 
-    private final Path uploadDir;
-    private final String publicBaseUrl;
+    // Content type is derived from the extension rather than the client header, so a
+    // caller cannot get e.g. text/html served back from our bucket under a .png name.
+    private static final Map<String, String> CONTENT_TYPES = Map.of(
+            "png", "image/png",
+            "jpg", "image/jpeg",
+            "jpeg", "image/jpeg",
+            "gif", "image/gif");
 
-    public AvatarStorage(@Value("${app.upload-dir:uploads}") String uploadDir,
-                         @Value("${app.public-base-url:http://localhost:8080}") String publicBaseUrl) {
-        this.uploadDir = Path.of(uploadDir).toAbsolutePath().normalize();
-        this.publicBaseUrl = publicBaseUrl;
+    private final S3Client s3;
+    private final S3Presigner presigner;
+    private final String bucket;
+    private final Duration presignTtl;
+
+    public AvatarStorage(S3Client s3,
+                         S3Presigner presigner,
+                         @Value("${aws.s3.bucket}") String bucket,
+                         @Value("${aws.s3.presign-ttl:PT12H}") Duration presignTtl) {
+        this.s3 = s3;
+        this.presigner = presigner;
+        this.bucket = bucket;
+        this.presignTtl = presignTtl;
     }
 
     /**
-     * @return the publicly reachable URL of the stored avatar
+     * @return the S3 object key of the stored avatar
      */
     public String store(Long userId, MultipartFile file) {
         if (file == null || file.isEmpty()) {
@@ -43,33 +63,43 @@ public class AvatarStorage {
         }
 
         String extension = extensionOf(file.getOriginalFilename());
-        if (!ALLOWED_EXTENSIONS.contains(extension)) {
+        String contentType = CONTENT_TYPES.get(extension);
+        if (contentType == null) {
             throw new ResponseStatusException(BAD_REQUEST,
-                    "Unsupported image type; allowed: " + ALLOWED_EXTENSIONS);
+                    "Unsupported image type; allowed: " + CONTENT_TYPES.keySet());
         }
 
         // Random name, never the client-supplied one, so a crafted filename cannot
-        // escape the upload directory or overwrite another user's avatar.
-        String filename = "%d-%s.%s".formatted(userId, UUID.randomUUID(), extension);
+        // overwrite another user's avatar.
+        String key = "avatars/%d/%s.%s".formatted(userId, UUID.randomUUID(), extension);
 
-        try {
-            Files.createDirectories(uploadDir);
-            Path target = uploadDir.resolve(filename).normalize();
-            if (!target.startsWith(uploadDir)) {
-                throw new ResponseStatusException(BAD_REQUEST, "Invalid upload path");
-            }
-            try (var in = file.getInputStream()) {
-                Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (IOException ex) {
+        try (InputStream in = file.getInputStream()) {
+            s3.putObject(b -> b.bucket(bucket).key(key).contentType(contentType),
+                    RequestBody.fromInputStream(in, file.getSize()));
+        } catch (IOException | SdkException ex) {
             throw new ResponseStatusException(INTERNAL_SERVER_ERROR, "Could not store the uploaded image", ex);
         }
-
-        return "%s/uploads/%s".formatted(publicBaseUrl, filename);
+        return key;
     }
 
-    public Path getUploadDir() {
-        return uploadDir;
+    public String presignedUrl(String key) {
+        return presigner.presignGetObject(b -> b
+                        .signatureDuration(presignTtl)
+                        .getObjectRequest(g -> g.bucket(bucket).key(key)))
+                .url()
+                .toString();
+    }
+
+    /**
+     * Best-effort: a leftover object only costs storage, so a failed delete is logged
+     * rather than failing the caller.
+     */
+    public void delete(String key) {
+        try {
+            s3.deleteObject(b -> b.bucket(bucket).key(key));
+        } catch (SdkException ex) {
+            log.warn("Could not delete old avatar {}: {}", key, ex.getMessage());
+        }
     }
 
     private String extensionOf(String originalFilename) {

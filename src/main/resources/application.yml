@@ -55,6 +55,14 @@ spring:
 aws:
   ssm:
     region: ap-south-1
+  s3:
+    # Private bucket (all public access blocked); avatars are served through
+    # presigned GET URLs. Credentials come from the AWS default provider chain.
+    bucket: ${S3_BUCKET:contact-nexus}
+    region: ${S3_REGION:ap-south-1}
+    # How long a returned avatar URL stays valid. The UI only refetches the user
+    # on page load, so this should outlast a typical open tab.
+    presign-ttl: PT12H
 
 db:
   url: /ContactNexus/database/directUrl
@@ -81,8 +89,6 @@ jwt:
   refresh-cookie-same-site: ${JWT_REFRESH_COOKIE_SAME_SITE:Lax}
 
 app:
-  upload-dir: ${UPLOAD_DIR:uploads}
-  public-base-url: ${PUBLIC_BASE_URL:http://localhost:8080}
   # Public URL of the UI - used to build password reset links that land users
   # back on /auth?mode=reset&token=... in the SPA.
   base-url: ${APP_BASE_URL:http://localhost:3000}

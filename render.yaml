@@ -69,6 +69,19 @@ services:
       - key: APP_EMAIL_FROM
         sync: false
 
+      # Avatar storage: private S3 bucket, read through presigned URLs.
+      - key: S3_BUCKET
+        value: contact-nexus
+      - key: S3_REGION
+        value: ap-south-1
+      # Keys of a dedicated IAM user scoped to s3:PutObject / GetObject /
+      # DeleteObject on arn:aws:s3:::contact-nexus/avatars/* (see DEPLOY.md).
+      # Never use an admin user's keys here.
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+
       # Kept for the SMTP code path - set these only if you flip APP_EMAIL_MODE
       # back to `smtp` (requires a Render paid plan or running elsewhere).
       - key: MAIL_USERNAME

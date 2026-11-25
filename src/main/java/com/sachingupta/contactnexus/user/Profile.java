@@ -42,5 +42,10 @@ public class Profile {
     @Column(length = 1000)
     private String bioDescription;
 
+    /** Externally hosted image supplied as a plain URL. */
     private String imageUrl;
+
+    /** S3 object key of an uploaded avatar; takes precedence over {@link #imageUrl}. */
+    @Column(length = 512)
+    private String imageKey;
 }

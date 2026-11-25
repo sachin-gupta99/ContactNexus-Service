@@ -11,7 +11,7 @@ Live: [contactnexus-service.onrender.com](https://contactnexus-service.onrender.
 - JJWT 0.12 for signed HS256 access tokens
 - Bucket4j for per-IP rate limiting
 - Brevo Transactional Email HTTPS API (swap-able via `EmailSender` abstraction)
-- AWS SDK v2 — SSM Parameter Store (optional; direct env vars also supported)
+- AWS SDK v2 — S3 for avatars (private bucket, presigned URLs); SSM Parameter Store (optional; direct env vars also supported)
 - Lombok, Jakarta Bean Validation
 
 ## Authentication
@@ -61,7 +61,7 @@ Exceeding the limit returns 429 with an RFC 6585 `Retry-After` header.
 | `POST` | `/api/v1/auth/forgot-password` | public | always 200 (enumeration-safe) |
 | `POST` | `/api/v1/auth/reset-password` | public | consumes a reset token, revokes all sessions |
 | `GET` | `/api/v1/auth/me` | bearer | current user |
-| `PUT` | `/api/v1/users/me/avatar` | bearer, multipart | uploads profile image |
+| `PUT` | `/api/v1/users/me/avatar` | bearer, multipart | uploads avatar to S3, returns `{ imageUrl }` (presigned) |
 | `GET` | `/api/v1/contacts?q=&page=&size=&sort=` | bearer | list (paged, searchable) — returns `PageResponse<ContactResponse>` |
 | `GET` | `/api/v1/contacts/{id}` | bearer | fetch one |
 | `POST` | `/api/v1/contacts` | bearer | create |
@@ -77,6 +77,7 @@ Flyway owns the schema (`ddl-auto: validate`). Migrations in `src/main/resources
 | `V1__init.sql` | `users`, `profiles`, `contacts`, `refresh_tokens` (+ indexes) baseline |
 | `V2__password_reset_tokens.sql` | `password_reset_tokens` table |
 | `V3__contacts_owner_id_index.sql` | `idx_contacts_owner_id` for paginated list queries |
+| `V4__profile_avatar_s3_key.sql` | `profiles.image_key` for S3 avatars; clears dead local `/uploads` links |
 
 `baseline-on-migrate: true` + `baseline-version: 1` means an existing database (e.g. prod Neon populated from the old `ddl-auto: update` era) is stamped at V1 without re-running `V1__init.sql`. Fresh databases execute every migration in full.
 
@@ -97,6 +98,8 @@ Values with a leading `/` are read from AWS SSM Parameter Store; anything else i
 | `APP_EMAIL_FROM` | `your-verified@gmail.com` | From address (must be verified with the chosen provider). |
 | `BREVO_API_KEY` | `xkeysib-…` | Scoped to Transactional Email. Only needed when `APP_EMAIL_MODE=brevo`. |
 | `MAIL_USERNAME` / `MAIL_PASSWORD` | Gmail + app password | Only needed when `APP_EMAIL_MODE=smtp` (does not work on Render free — SMTP egress blocked). |
+| `S3_BUCKET` / `S3_REGION` | `contact-nexus` / `ap-south-1` | Avatar bucket (defaults shown). Keep all public access blocked. |
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | IAM user keys | Least-privilege user scoped to `avatars/*` (see DEPLOY.md). Not needed on AWS with a task role. |
 
 ### SSM mode (optional)
 
@@ -134,9 +137,9 @@ src/main/java/com/sachingupta/contactnexus/
     PageResponse.java                       # stable JSON wrapper around Spring's Page
   config/
     AwsSSMConfig.java                       # SsmClient bean (optional)
+    AwsS3Config.java                        # S3Client + S3Presigner beans
     PostgreDBConfig.java                    # DataSource, SSM-or-env resolver
     PostgreDBProperties.java
-    StaticResourceConfig.java               # /uploads/** static mount
     WebConfig.java                          # CORS (CorsFilter at HIGHEST_PRECEDENCE)
   email/
     EmailSender.java                        # interface - swap transport without caller changes
@@ -160,7 +163,7 @@ src/main/java/com/sachingupta/contactnexus/
   user/
     User.java, Profile.java, UserRepository.java
     UserService.java, AuthController.java, UserController.java
-    AvatarStorage.java
+    AvatarStorage.java                      # S3 put / presign / delete for avatars
     dto/ AuthResponse, LoginRequest, SignupRequest, UserResponse, ProfileDto,
          ForgotPasswordRequest, ResetPasswordRequest
   contact/
@@ -182,7 +185,7 @@ Runs on **Render** as a Docker container, auto-deployed from `main` via Render's
 - [x] Spring Security + JWT access tokens
 - [x] Refresh tokens with rotation + reuse detection + HttpOnly cookie
 - [x] User service + ownership checks on contact resources
-- [x] Local filesystem avatar upload (`/uploads/**`)
+- [x] Avatar upload to a private S3 bucket, served via presigned URLs
 - [x] Dockerfile + Render deploy
 - [x] Flyway migrations
 - [x] Forgot / reset password with revoke-all-families on success
@@ -192,7 +195,6 @@ Runs on **Render** as a Docker container, auto-deployed from `main` via Render's
 - [ ] Account-level login lockout (track attempts per user, progressive backoff)
 - [ ] Caffeine-cache for the rate-limit buckets (TTL eviction)
 - [ ] CAPTCHA on repeated forgot-password attempts
-- [ ] S3 avatar storage (`/ContactNexus/s3/*` already in SSM)
 - [ ] Trigram index on `contacts(first_name, last_name, email)` once any user crosses a few thousand contacts
 - [ ] Testcontainers integration suite covering the auth + reset flow
 - [ ] Terraform module for the AWS-flavoured deployment (ECS Fargate + RDS + S3 + CloudFront)

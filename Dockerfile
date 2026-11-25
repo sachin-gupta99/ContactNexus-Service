@@ -23,7 +23,7 @@ ENV JAVA_OPTS="-Xmx400m -XX:+UseSerialGC -XX:TieredStopAtLevel=1 -Dserver.port=8
 # A non-root user is a cheap hardening win: if the JVM is ever broken into,
 # the attacker lands as 'app', not root.
 RUN addgroup -S app && adduser -S app -G app \
- && mkdir -p /app/uploads && chown -R app:app /app
+ && chown -R app:app /app
 
 COPY --from=build --chown=app:app /app/target/app.jar /app/app.jar
 

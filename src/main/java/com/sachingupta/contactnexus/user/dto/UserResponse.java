@@ -11,12 +11,12 @@ public record UserResponse(
         ProfileDto profile,
         Instant createdAt) {
 
-    public static UserResponse from(User u) {
+    public static UserResponse from(User u, String avatarUrl) {
         return new UserResponse(
                 u.getId(),
                 u.getEmail(),
                 u.getName(),
-                ProfileDto.from(u.getProfile()),
+                ProfileDto.from(u.getProfile(), avatarUrl),
                 u.getCreatedAt());
     }
 }
