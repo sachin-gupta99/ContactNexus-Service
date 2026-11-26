@@ -3,7 +3,11 @@ package com.sachingupta.contactnexus.contact;
 import jakarta.persistence.*;
 import lombok.*;
 
+import org.hibernate.annotations.BatchSize;
+
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.Set;
 
 @Entity
 @Table(name = "contacts")
@@ -36,6 +40,9 @@ public class Contact {
 
     private String imageUrl;
 
+    /** S3 key of an uploaded photo; wins over {@link #imageUrl} when set. */
+    private String imageKey;
+
     private String street;
     private String city;
     private String state;
@@ -49,6 +56,15 @@ public class Contact {
     @Column(nullable = false)
     @Builder.Default
     private boolean favorite = false;
+
+    // Batch-fetched so a page of 12 contacts loads its tags in one extra query, not 12.
+    @ManyToMany
+    @JoinTable(name = "contact_tags",
+            joinColumns = @JoinColumn(name = "contact_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id"))
+    @BatchSize(size = 50)
+    @Builder.Default
+    private Set<Tag> tags = new HashSet<>();
 
     @Column(nullable = false, updatable = false)
     private Instant createdAt;

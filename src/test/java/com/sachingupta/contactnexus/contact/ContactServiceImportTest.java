@@ -22,12 +22,21 @@ class ContactServiceImportTest {
     @Mock
     ContactRepository repository;
 
+    @Mock
+    TagService tagService;
+
+    @Mock
+    TagRepository tagRepository;
+
+    @Mock
+    com.sachingupta.contactnexus.user.AvatarStorage storage;
+
     @InjectMocks
     ContactService service;
 
     private static ContactRequest contact(String firstName, String email) {
         return new ContactRequest(firstName, null, email, null, null, null, null,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
     }
 
     @SuppressWarnings("unchecked")

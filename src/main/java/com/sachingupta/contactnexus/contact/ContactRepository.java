@@ -20,11 +20,20 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
             select c from Contact c
             where c.ownerId = :ownerId
               and (:favoritesOnly = false or c.favorite = true)
+              and (:tag = '' or exists (
+                    select 1 from Contact c2 join c2.tags t
+                    where c2.id = c.id and lower(t.name) = :tag))
               and (lower(c.firstName) like :pattern escape '\\'
                    or lower(c.lastName) like :pattern escape '\\'
                    or lower(c.email) like :pattern escape '\\')
             """)
-    Page<Contact> search(Long ownerId, String pattern, boolean favoritesOnly, Pageable pageable);
+    Page<Contact> search(Long ownerId, String pattern, boolean favoritesOnly, String tag, Pageable pageable);
+
+    /** For duplicate detection, which has to compare every contact. */
+    List<Contact> findAllByOwnerId(Long ownerId);
+
+    @Query("select c.imageKey from Contact c where c.ownerId = :ownerId and c.imageKey is not null")
+    List<String> findImageKeysByOwnerId(Long ownerId);
 
     /** Lower-cased emails the owner already has, for duplicate detection on import. */
     @Query("select lower(c.email) from Contact c where c.ownerId = :ownerId")

@@ -1,4 +1,4 @@
-package com.sachingupta.contactnexus.security;
+package com.sachingupta.contactnexus.common;
 
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -8,12 +8,12 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  * rollback never sends a link to a token that doesn't exist. Runs immediately
  * when there is no transaction.
  */
-final class AfterCommit {
+public final class AfterCommit {
 
     private AfterCommit() {
     }
 
-    static void run(Runnable action) {
+    public static void run(Runnable action) {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override

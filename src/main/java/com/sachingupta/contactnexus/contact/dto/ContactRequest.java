@@ -4,7 +4,14 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
-/** Limits mirror the column sizes so an over-long value is a 400, not a database error. */
+import java.util.List;
+
+/**
+ * Limits mirror the column sizes so an over-long value is a 400, not a database error.
+ *
+ * <p>{@code tags}: {@code null} leaves an existing contact's tags unchanged (so older
+ * clients that don't send the field can't wipe them); an empty list clears them.
+ */
 public record ContactRequest(
         @NotBlank @Size(max = 255) String firstName,
         @Size(max = 255) String lastName,
@@ -19,5 +26,6 @@ public record ContactRequest(
         @Size(max = 255) String zipCode,
         @Size(max = 255) String githubUrl,
         @Size(max = 255) String linkedinUrl,
-        @Size(max = 255) String instagramUrl) {
+        @Size(max = 255) String instagramUrl,
+        @Size(max = 10) List<@Size(max = 30) String> tags) {
 }

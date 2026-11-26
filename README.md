@@ -96,8 +96,13 @@ Exceeding the limit returns 429 with an RFC 6585 `Retry-After` header.
 | `PUT` | `/api/v1/users/me` | bearer | update name + profile fields |
 | `PUT` | `/api/v1/users/me/avatar` | bearer, multipart | uploads avatar to S3, returns `{ imageUrl }` (presigned) |
 | `DELETE` | `/api/v1/users/me` | bearer | `{ password }`; deletes the account, its contacts, tokens and avatar. 400 if the password is wrong |
-| `GET` | `/api/v1/contacts?q=&favorite=&page=&size=&sort=` | bearer | list (paged, searchable, `favorite=true` for starred only) — returns `PageResponse<ContactResponse>` |
-| `GET` | `/api/v1/contacts/stats` | bearer | `{ total, favorites, addedThisWeek }` |
+| `GET` | `/api/v1/contacts?q=&favorite=&tag=&page=&size=&sort=` | bearer | list (paged, searchable, `favorite=true` for starred only, `tag=` case-insensitive). `sort` is whitelisted (`firstName`, `lastName`, `email`, `createdAt`, `updatedAt`, `favorite`) and repeatable, e.g. `sort=favorite,desc&sort=firstName,asc` — returns `PageResponse<ContactResponse>` |
+| `GET` | `/api/v1/contacts/tags` | bearer | `[{ name, count }]`, alphabetical |
+| `DELETE` | `/api/v1/contacts/tags/{name}` | bearer | removes the tag from every contact |
+| `GET` | `/api/v1/contacts/duplicates` | bearer | groups sharing an email (ignoring case) or phone (last 10 digits) |
+| `PUT` | `/api/v1/contacts/{id}/photo` | bearer, multipart | uploads to S3 under `avatars/{owner}/contacts/`; returns the contact with a presigned `imageUrl` and `hasPhoto: true` |
+| `DELETE` | `/api/v1/contacts/{id}/photo` | bearer | removes the photo (S3 object deleted after commit) |
+| `GET` | `/api/v1/contacts/stats` | bearer | `{ total, favorites, addedThisWeek, tags }` |
 | `POST` | `/api/v1/contacts/import` | bearer | `{ contacts: [...] }`, max 500; skips emails you already have (case-insensitive) and returns `{ imported, skippedDuplicates }` |
 | `GET` | `/api/v1/contacts/{id}` | bearer | fetch one |
 | `POST` | `/api/v1/contacts` | bearer | create |
@@ -119,6 +124,7 @@ Flyway owns the schema (`ddl-auto: validate`). Migrations in `src/main/resources
 | `V4__profile_avatar_s3_key.sql` | `profiles.image_key` for S3 avatars; clears dead local `/uploads` links |
 | `V5__contacts_favorite.sql` | `contacts.favorite` boolean (default `false`) |
 | `V6__email_verification_and_lockout.sql` | `users.email_verified` (existing rows set to true), `failed_login_attempts`, `locked_until`; `email_verification_tokens` |
+| `V7__contact_tags_and_photos.sql` | `tags` (unique per owner ignoring case), `contact_tags` (cascading), `contacts.image_key` |
 
 `baseline-on-migrate: true` + `baseline-version: 1` means an existing database (e.g. prod Neon populated from the old `ddl-auto: update` era) is stamped at V1 without re-running `V1__init.sql`. Fresh databases execute every migration in full.
 

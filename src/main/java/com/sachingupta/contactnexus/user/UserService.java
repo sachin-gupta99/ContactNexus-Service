@@ -2,7 +2,9 @@ package com.sachingupta.contactnexus.user;
 
 import com.sachingupta.contactnexus.common.ConflictException;
 import com.sachingupta.contactnexus.common.NotFoundException;
+import com.sachingupta.contactnexus.common.AfterCommit;
 import com.sachingupta.contactnexus.contact.ContactRepository;
+import com.sachingupta.contactnexus.contact.TagRepository;
 import com.sachingupta.contactnexus.common.AccountLockedException;
 import com.sachingupta.contactnexus.common.EmailNotVerifiedException;
 import com.sachingupta.contactnexus.security.EmailVerificationService;
@@ -27,6 +29,8 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 @Service
@@ -42,6 +46,7 @@ public class UserService {
     private final EmailVerificationService emailVerificationService;
     private final LoginAttemptService loginAttempts;
     private final ContactRepository contactRepository;
+    private final TagRepository tagRepository;
     private final AvatarStorage avatarStorage;
 
     /**
@@ -201,20 +206,20 @@ public class UserService {
         User user = requireById(userId);
         requirePassword(user, req.password(), "Password is incorrect");
 
-        String avatarKey = user.getProfile() == null ? null : user.getProfile().getImageKey();
+        List<String> objectKeys = new ArrayList<>(contactRepository.findImageKeysByOwnerId(userId));
+        if (user.getProfile() != null && user.getProfile().getImageKey() != null) {
+            objectKeys.add(user.getProfile().getImageKey());
+        }
+        // contact_tags rows go with the contacts (ON DELETE CASCADE).
         contactRepository.deleteByOwnerId(userId);
+        tagRepository.deleteByOwnerId(userId);
         refreshTokenService.deleteAllForUser(userId);
         passwordResetService.deleteAllForUser(userId);
         emailVerificationService.deleteAllForUser(userId);
         users.delete(user);
 
-        if (avatarKey != null) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCommit() {
-                    avatarStorage.delete(avatarKey);
-                }
-            });
+        if (!objectKeys.isEmpty()) {
+            AfterCommit.run(() -> avatarStorage.deleteAll(objectKeys));
         }
     }
 
