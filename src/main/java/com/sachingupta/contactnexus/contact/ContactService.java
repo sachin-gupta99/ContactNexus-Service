@@ -1,6 +1,7 @@
 package com.sachingupta.contactnexus.contact;
 
 import com.sachingupta.contactnexus.common.NotFoundException;
+import com.sachingupta.contactnexus.contact.dto.ContactImportResult;
 import com.sachingupta.contactnexus.contact.dto.ContactRequest;
 import com.sachingupta.contactnexus.contact.dto.ContactStats;
 import lombok.RequiredArgsConstructor;
@@ -11,7 +12,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -62,7 +67,27 @@ public class ContactService {
     }
 
     public Contact create(Long ownerId, ContactRequest req) {
-        Contact contact = Contact.builder()
+        return repository.save(toEntity(ownerId, req));
+    }
+
+    /**
+     * Saves the batch in one transaction, skipping any contact whose email the
+     * owner already has or that appeared earlier in the same batch (case-insensitive).
+     */
+    public ContactImportResult importAll(Long ownerId, List<ContactRequest> requests) {
+        Set<String> seen = new HashSet<>(repository.findEmailsLowercase(ownerId));
+        List<Contact> toSave = new ArrayList<>();
+        for (ContactRequest req : requests) {
+            if (seen.add(req.email().trim().toLowerCase(Locale.ROOT))) {
+                toSave.add(toEntity(ownerId, req));
+            }
+        }
+        repository.saveAll(toSave);
+        return new ContactImportResult(toSave.size(), requests.size() - toSave.size());
+    }
+
+    private static Contact toEntity(Long ownerId, ContactRequest req) {
+        return Contact.builder()
                 .ownerId(ownerId)
                 .firstName(req.firstName())
                 .lastName(req.lastName())
@@ -79,7 +104,6 @@ public class ContactService {
                 .linkedinUrl(req.linkedinUrl())
                 .instagramUrl(req.instagramUrl())
                 .build();
-        return repository.save(contact);
     }
 
     public Contact update(Long ownerId, Long id, ContactRequest req) {

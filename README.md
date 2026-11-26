@@ -1,5 +1,7 @@
 # ContactNexus-Service
 
+[![CI](https://github.com/sachin-gupta99/ContactNexus-Service/actions/workflows/ci.yml/badge.svg)](https://github.com/sachin-gupta99/ContactNexus-Service/actions/workflows/ci.yml)
+
 Spring Boot 4 + Java 21 backend for [ContactNexus-UI](https://github.com/sachin-gupta99/ContactNexus-UI).
 Live: [contactnexus-service.onrender.com](https://contactnexus-service.onrender.com) — try the full app at [contactnexus.vercel.app](https://contactnexus.vercel.app).
 
@@ -48,6 +50,7 @@ Per-IP token-bucket limiter (`RateLimitFilter`) in front of the auth chain, Buck
 | `/forgot-password` | 3 per hour | Protects email-provider quota |
 | `/reset-password` | 10 per hour | Defence against token brute force |
 | `POST /change-password` + `DELETE /users/me` (shared) | 10 per 15 min | Both re-check the password; stops a stolen access token being used to brute-force it |
+| `/contacts/import` | 20 per hour | Each call can insert up to 500 rows |
 
 Exceeding the limit returns 429 with an RFC 6585 `Retry-After` header.
 
@@ -69,6 +72,7 @@ Exceeding the limit returns 429 with an RFC 6585 `Retry-After` header.
 | `DELETE` | `/api/v1/users/me` | bearer | `{ password }`; deletes the account, its contacts, tokens and avatar. 400 if the password is wrong |
 | `GET` | `/api/v1/contacts?q=&favorite=&page=&size=&sort=` | bearer | list (paged, searchable, `favorite=true` for starred only) — returns `PageResponse<ContactResponse>` |
 | `GET` | `/api/v1/contacts/stats` | bearer | `{ total, favorites, addedThisWeek }` |
+| `POST` | `/api/v1/contacts/import` | bearer | `{ contacts: [...] }`, max 500; skips emails you already have (case-insensitive) and returns `{ imported, skippedDuplicates }` |
 | `GET` | `/api/v1/contacts/{id}` | bearer | fetch one |
 | `POST` | `/api/v1/contacts` | bearer | create |
 | `PUT` | `/api/v1/contacts/{id}` | bearer | update |
@@ -135,6 +139,15 @@ mvn spring-boot:run
 ```
 
 Health: `http://localhost:8080/actuator/health`. Flyway log on first boot shows every applied migration.
+
+Tests: `mvn verify`. They are plain unit tests (Mockito, Spring mock servlet requests, Bean Validation) and need no database.
+
+## CI
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and push to `main`:
+
+- **Build and test**: `mvn verify` on Temurin 21 with the Maven cache. The Docker build skips tests, so this is the only place they run.
+- **Docker image builds**: `docker build .`, so a Dockerfile change that would break the Render deploy fails here first.
 
 ## Project structure
 

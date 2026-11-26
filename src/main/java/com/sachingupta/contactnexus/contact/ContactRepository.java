@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.time.Instant;
+import java.util.List;
 
 public interface ContactRepository extends JpaRepository<Contact, Long> {
 
@@ -24,6 +25,10 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
                    or lower(c.email) like :pattern escape '\\')
             """)
     Page<Contact> search(Long ownerId, String pattern, boolean favoritesOnly, Pageable pageable);
+
+    /** Lower-cased emails the owner already has, for duplicate detection on import. */
+    @Query("select lower(c.email) from Contact c where c.ownerId = :ownerId")
+    List<String> findEmailsLowercase(Long ownerId);
 
     long countByOwnerId(Long ownerId);
 
