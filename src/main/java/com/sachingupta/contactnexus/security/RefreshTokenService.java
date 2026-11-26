@@ -1,6 +1,8 @@
 package com.sachingupta.contactnexus.security;
 
+import com.sachingupta.contactnexus.common.NotFoundException;
 import com.sachingupta.contactnexus.user.User;
+import com.sachingupta.contactnexus.user.dto.SessionResponse;
 import com.sachingupta.contactnexus.user.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +19,9 @@ import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -95,6 +100,48 @@ public class RefreshTokenService {
 
     public void deleteAllForUser(Long userId) {
         refreshTokens.deleteAllForUser(userId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<SessionResponse> listSessions(Long userId, String currentRawToken) {
+        Instant now = Instant.now();
+        UUID currentFamily = familyOf(userId, currentRawToken);
+        Map<UUID, Instant> startedAt = new HashMap<>();
+        for (Object[] row : refreshTokens.familyStartTimes(userId)) {
+            startedAt.put((UUID) row[0], (Instant) row[1]);
+        }
+        return refreshTokens.findActiveForUser(userId, now).stream()
+                .map(t -> new SessionResponse(
+                        t.getFamilyId(),
+                        t.getUserAgent(),
+                        t.getIpAddress(),
+                        startedAt.getOrDefault(t.getFamilyId(), t.getCreatedAt()),
+                        t.getCreatedAt(),
+                        t.getExpiresAt(),
+                        t.getFamilyId().equals(currentFamily)))
+                .toList();
+    }
+
+    /**
+     * Signs one device out.
+     * @return true if it was the caller's own device, so the cookie should be cleared
+     */
+    public boolean revokeSession(Long userId, UUID familyId, String currentRawToken) {
+        int revoked = refreshTokens.revokeFamilyForUser(userId, familyId, Instant.now());
+        if (revoked == 0) {
+            throw new NotFoundException("Session not found");
+        }
+        return familyId.equals(familyOf(userId, currentRawToken));
+    }
+
+    private UUID familyOf(Long userId, String rawToken) {
+        if (rawToken == null || rawToken.isBlank()) {
+            return null;
+        }
+        return refreshTokens.findByTokenHash(hash(rawToken))
+                .filter(t -> t.getUser().getId().equals(userId))
+                .map(RefreshToken::getFamilyId)
+                .orElse(null);
     }
 
     private IssuedRefreshToken issue(User user, UUID familyId, HttpServletRequest request) {

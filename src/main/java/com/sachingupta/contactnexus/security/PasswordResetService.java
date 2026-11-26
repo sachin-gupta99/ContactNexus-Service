@@ -36,6 +36,7 @@ public class PasswordResetService {
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
     private final EmailSender emailSender;
+    private final LoginAttemptService loginAttempts;
 
     @Value("${app.base-url}")
     private String baseUrl;
@@ -92,6 +93,11 @@ public class PasswordResetService {
         User user = token.getUser();
         user.setPasswordHash(passwordEncoder.encode(newPassword));
         token.setUsedAt(Instant.now());
+        // Using the emailed link proves the owner has the inbox: confirm the
+        // address (this is also how someone reclaims an address another person
+        // signed up with) and lift any sign-in lock.
+        user.setEmailVerified(true);
+        loginAttempts.clear(user);
 
         // Any lingering session - including anything a thief might be holding -
         // dies here. User must sign in again with the new password.

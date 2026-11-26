@@ -27,6 +27,19 @@ public class User {
     @Column(nullable = false)
     private String name;
 
+    /** False until the emailed link is used. Login is refused until then. */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean emailVerified = false;
+
+    /** Consecutive wrong passwords since the last successful sign-in or lockout. */
+    @Column(nullable = false)
+    @Builder.Default
+    private int failedLoginAttempts = 0;
+
+    /** While in the future, sign-in is refused even with the right password. */
+    private Instant lockedUntil;
+
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private Profile profile;
 
