@@ -3,7 +3,13 @@ package com.sachingupta.contactnexus.contact.dto;
 import com.sachingupta.contactnexus.contact.Contact;
 
 import java.time.Instant;
+import java.util.List;
 
+/**
+ * {@code imageUrl} is either the external URL the user typed or, when
+ * {@code hasPhoto} is true, a short-lived presigned URL for the uploaded photo.
+ * Clients must not send a presigned URL back as {@code imageUrl}.
+ */
 public record ContactResponse(
         Long id,
         String firstName,
@@ -12,6 +18,7 @@ public record ContactResponse(
         String phone,
         String bio,
         String imageUrl,
+        boolean hasPhoto,
         String street,
         String city,
         String state,
@@ -21,10 +28,11 @@ public record ContactResponse(
         String linkedinUrl,
         String instagramUrl,
         boolean favorite,
+        List<String> tags,
         Instant createdAt,
         Instant updatedAt) {
 
-    public static ContactResponse from(Contact c) {
+    public static ContactResponse from(Contact c, String resolvedImageUrl, boolean hasPhoto, List<String> tags) {
         return new ContactResponse(
                 c.getId(),
                 c.getFirstName(),
@@ -32,7 +40,8 @@ public record ContactResponse(
                 c.getEmail(),
                 c.getPhone(),
                 c.getBio(),
-                c.getImageUrl(),
+                resolvedImageUrl,
+                hasPhoto,
                 c.getStreet(),
                 c.getCity(),
                 c.getState(),
@@ -42,6 +51,7 @@ public record ContactResponse(
                 c.getLinkedinUrl(),
                 c.getInstagramUrl(),
                 c.isFavorite(),
+                tags,
                 c.getCreatedAt(),
                 c.getUpdatedAt());
     }

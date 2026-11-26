@@ -9,12 +9,14 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.model.ObjectIdentifier;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.presigner.S3Presigner;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -58,6 +60,18 @@ public class AvatarStorage {
      * @return the S3 object key of the stored avatar
      */
     public String store(Long userId, MultipartFile file) {
+        return storeUnder("avatars/%d/".formatted(userId), file);
+    }
+
+    /**
+     * Contact photos live under the owner's avatar prefix, so the existing
+     * least-privilege IAM policy ({@code avatars/*}) covers them unchanged.
+     */
+    public String storeContactPhoto(Long ownerId, MultipartFile file) {
+        return storeUnder("avatars/%d/contacts/".formatted(ownerId), file);
+    }
+
+    private String storeUnder(String prefix, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new ResponseStatusException(BAD_REQUEST, "No file was uploaded");
         }
@@ -71,7 +85,7 @@ public class AvatarStorage {
 
         // Random name, never the client-supplied one, so a crafted filename cannot
         // overwrite another user's avatar.
-        String key = "avatars/%d/%s.%s".formatted(userId, UUID.randomUUID(), extension);
+        String key = prefix + UUID.randomUUID() + "." + extension;
 
         try (InputStream in = file.getInputStream()) {
             s3.putObject(b -> b.bucket(bucket).key(key).contentType(contentType),
@@ -99,6 +113,20 @@ public class AvatarStorage {
             s3.deleteObject(b -> b.bucket(bucket).key(key));
         } catch (SdkException ex) {
             log.warn("Could not delete old avatar {}: {}", key, ex.getMessage());
+        }
+    }
+
+    /** Best-effort batch delete (S3 allows 1000 keys per request). */
+    public void deleteAll(List<String> keys) {
+        for (int i = 0; i < keys.size(); i += 1000) {
+            List<ObjectIdentifier> batch = keys.subList(i, Math.min(keys.size(), i + 1000)).stream()
+                    .map(k -> ObjectIdentifier.builder().key(k).build())
+                    .toList();
+            try {
+                s3.deleteObjects(b -> b.bucket(bucket).delete(d -> d.objects(batch).quiet(true)));
+            } catch (SdkException ex) {
+                log.warn("Could not delete {} objects: {}", batch.size(), ex.getMessage());
+            }
         }
     }
 
