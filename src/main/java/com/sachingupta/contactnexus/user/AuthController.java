@@ -3,12 +3,16 @@ package com.sachingupta.contactnexus.user;
 import com.sachingupta.contactnexus.security.AuthUser;
 import com.sachingupta.contactnexus.security.PasswordResetService;
 import com.sachingupta.contactnexus.security.RefreshCookie;
+import com.sachingupta.contactnexus.security.RefreshTokenService;
 import com.sachingupta.contactnexus.user.UserService.AuthResult;
 import com.sachingupta.contactnexus.user.dto.AuthResponse;
 import com.sachingupta.contactnexus.user.dto.ChangePasswordRequest;
 import com.sachingupta.contactnexus.user.dto.ForgotPasswordRequest;
 import com.sachingupta.contactnexus.user.dto.LoginRequest;
+import com.sachingupta.contactnexus.user.dto.ResendVerificationRequest;
 import com.sachingupta.contactnexus.user.dto.ResetPasswordRequest;
+import com.sachingupta.contactnexus.user.dto.SessionResponse;
+import com.sachingupta.contactnexus.user.dto.VerifyEmailRequest;
 import com.sachingupta.contactnexus.user.dto.SignupRequest;
 import com.sachingupta.contactnexus.user.dto.UserResponse;
 import jakarta.servlet.http.HttpServletRequest;
@@ -19,6 +23,9 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+import java.util.UUID;
+
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -27,13 +34,49 @@ public class AuthController {
     private final UserService service;
     private final RefreshCookie refreshCookie;
     private final PasswordResetService passwordResetService;
+    private final RefreshTokenService refreshTokenService;
 
+    /**
+     * No refresh cookie: the account isn't verified yet. The short-lived access
+     * token only lets the client finish profile setup (avatar upload).
+     */
     @PostMapping("/signup")
     @ResponseStatus(HttpStatus.CREATED)
-    public AuthResponse signup(@Valid @RequestBody SignupRequest body,
-                               HttpServletRequest request,
-                               HttpServletResponse response) {
-        return writeResult(service.signup(body, request), response);
+    public AuthResponse signup(@Valid @RequestBody SignupRequest body) {
+        return service.signup(body);
+    }
+
+    /** The link in the confirmation email lands here (via the UI); signs the user in. */
+    @PostMapping("/verify-email")
+    public AuthResponse verifyEmail(@Valid @RequestBody VerifyEmailRequest body,
+                                    HttpServletRequest request,
+                                    HttpServletResponse response) {
+        return writeResult(service.verifyEmail(body.token(), request), response);
+    }
+
+    /** Enumeration-safe: always 200, sends only if the address has an unverified account. */
+    @PostMapping("/resend-verification")
+    @ResponseStatus(HttpStatus.OK)
+    public void resendVerification(@Valid @RequestBody ResendVerificationRequest body) {
+        service.resendVerification(body.email());
+    }
+
+    /** Lives under /auth so the path-scoped refresh cookie identifies "this device". */
+    @GetMapping("/sessions")
+    public List<SessionResponse> sessions(@AuthenticationPrincipal AuthUser principal,
+                                          HttpServletRequest request) {
+        return refreshTokenService.listSessions(principal.getId(), refreshCookie.read(request));
+    }
+
+    @DeleteMapping("/sessions/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void revokeSession(@AuthenticationPrincipal AuthUser principal,
+                              @PathVariable UUID id,
+                              HttpServletRequest request,
+                              HttpServletResponse response) {
+        if (refreshTokenService.revokeSession(principal.getId(), id, refreshCookie.read(request))) {
+            refreshCookie.clear(response);
+        }
     }
 
     @PostMapping("/login")

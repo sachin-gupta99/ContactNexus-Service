@@ -32,6 +32,26 @@ Every call to `POST /api/v1/auth/refresh`:
 
 A nightly cron (`RefreshTokenCleanup`, `0 15 3 * * *`) purges expired refresh and reset tokens.
 
+### Email verification
+
+- `POST /auth/signup` creates the account **unverified** and emails a 24-hour, single-use confirmation link (`${app.base-url}/auth?mode=verify&token=<raw>`, SHA-256 stored). It returns a 15-minute access token but **no refresh cookie**, so the client can finish profile setup (avatar upload) and nothing more.
+- `POST /auth/login` with the right password on an unverified account returns **403** `{"code":"EMAIL_NOT_VERIFIED"}`. A wrong password still gets the generic 401, so verification state is only revealed to someone who knows the password.
+- `POST /auth/verify-email { token }` spends the token, marks the address verified and signs the user in (sets the cookie).
+- `POST /auth/resend-verification { email }` is enumeration-safe: always 200, sends only for an unverified account.
+- Completing a password reset also marks the address verified: using the emailed link proves inbox ownership. It is also how the real owner reclaims an address someone else signed up with.
+- Accounts that existed before V6 are treated as verified.
+
+### Per-account lockout
+
+- 5 wrong passwords in a row lock the account for 15 minutes, **even for the right password**. Response: 429 `{"code":"ACCOUNT_LOCKED","retryAfterSeconds":...}` with `Retry-After`. The owner gets an email.
+- Emails with no account are counted in memory with the same thresholds and messages, so responses can't reveal which addresses are registered. Unknown emails also go through a bcrypt comparison, so timing doesn't reveal it either.
+- A successful sign-in resets the counter; a password reset lifts the lock.
+- Trade-off: anyone who knows an address can lock its owner out for 15 minutes. The lock is short, the owner is told, and a reset lifts it.
+
+### Signed-in devices
+
+Each refresh-token family is one device. `GET /auth/sessions` lists live families (user agent and IP from the newest token, when the family started, when it last refreshed, and which one is the caller's). `DELETE /auth/sessions/{id}` revokes one family; it is scoped to the caller, so another user's id returns 404. Both live under `/auth` so the path-scoped refresh cookie can identify "this device".
+
 ### Password reset
 
 - `POST /auth/forgot-password { email }` — always returns 200 (enumeration-safe). On a hit, issues a 32-byte random token, SHA-256-stores it, and emails a 30-minute link to `${app.base-url}/auth?mode=reset&token=<raw>`.
@@ -49,6 +69,8 @@ Per-IP token-bucket limiter (`RateLimitFilter`) in front of the auth chain, Buck
 | `/signup` | 5 per hour | Caps mass account creation |
 | `/forgot-password` | 3 per hour | Protects email-provider quota |
 | `/reset-password` | 10 per hour | Defence against token brute force |
+| `/verify-email` | 10 per hour | Defence against token brute force |
+| `/resend-verification` | 3 per hour | Protects email-provider quota |
 | `POST /change-password` + `DELETE /users/me` (shared) | 10 per 15 min | Both re-check the password; stops a stolen access token being used to brute-force it |
 | `/contacts/import` | 20 per hour | Each call can insert up to 500 rows |
 
@@ -58,8 +80,12 @@ Exceeding the limit returns 429 with an RFC 6585 `Retry-After` header.
 
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
-| `POST` | `/api/v1/auth/signup` | public | returns `{ accessToken, expiresInSeconds, user }` + sets cookie |
-| `POST` | `/api/v1/auth/login` | public | same shape |
+| `POST` | `/api/v1/auth/signup` | public | creates an unverified account, emails a confirmation link; returns a 15-min access token, **no** cookie |
+| `POST` | `/api/v1/auth/verify-email` | public | `{ token }`; verifies and signs in (sets cookie) |
+| `POST` | `/api/v1/auth/resend-verification` | public | `{ email }`; always 200 |
+| `GET` | `/api/v1/auth/sessions` | bearer + cookie | signed-in devices, with `current` |
+| `DELETE` | `/api/v1/auth/sessions/{id}` | bearer | signs one device out; clears the cookie if it was this one |
+| `POST` | `/api/v1/auth/login` | public | `{ accessToken, expiresInSeconds, user }` + cookie; 403 if unverified, 429 if locked |
 | `POST` | `/api/v1/auth/refresh` | cookie | rotates cookie, returns new access token |
 | `POST` | `/api/v1/auth/logout` | cookie | revokes server-side, clears cookie |
 | `POST` | `/api/v1/auth/forgot-password` | public | always 200 (enumeration-safe) |
@@ -92,6 +118,7 @@ Flyway owns the schema (`ddl-auto: validate`). Migrations in `src/main/resources
 | `V3__contacts_owner_id_index.sql` | `idx_contacts_owner_id` for paginated list queries |
 | `V4__profile_avatar_s3_key.sql` | `profiles.image_key` for S3 avatars; clears dead local `/uploads` links |
 | `V5__contacts_favorite.sql` | `contacts.favorite` boolean (default `false`) |
+| `V6__email_verification_and_lockout.sql` | `users.email_verified` (existing rows set to true), `failed_login_attempts`, `locked_until`; `email_verification_tokens` |
 
 `baseline-on-migrate: true` + `baseline-version: 1` means an existing database (e.g. prod Neon populated from the old `ddl-auto: update` era) is stamped at V1 without re-running `V1__init.sql`. Fresh databases execute every migration in full.
 

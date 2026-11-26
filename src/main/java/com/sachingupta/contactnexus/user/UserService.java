@@ -3,6 +3,10 @@ package com.sachingupta.contactnexus.user;
 import com.sachingupta.contactnexus.common.ConflictException;
 import com.sachingupta.contactnexus.common.NotFoundException;
 import com.sachingupta.contactnexus.contact.ContactRepository;
+import com.sachingupta.contactnexus.common.AccountLockedException;
+import com.sachingupta.contactnexus.common.EmailNotVerifiedException;
+import com.sachingupta.contactnexus.security.EmailVerificationService;
+import com.sachingupta.contactnexus.security.LoginAttemptService;
 import com.sachingupta.contactnexus.security.PasswordResetService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -35,10 +39,18 @@ public class UserService {
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
     private final PasswordResetService passwordResetService;
+    private final EmailVerificationService emailVerificationService;
+    private final LoginAttemptService loginAttempts;
     private final ContactRepository contactRepository;
     private final AvatarStorage avatarStorage;
 
-    public AuthResult signup(SignupRequest req, HttpServletRequest request) {
+    /**
+     * Creates the account unverified and emails a confirmation link. Returns a
+     * short-lived access token (no refresh token) so the client can finish
+     * profile setup, such as the avatar upload, before asking the user to
+     * check their inbox. The account can't sign in again until it is verified.
+     */
+    public AuthResponse signup(SignupRequest req) {
         String email = normalize(req.email());
         if (users.existsByEmailIgnoreCase(email)) {
             throw new ConflictException("An account with email %s already exists".formatted(email));
@@ -55,19 +67,64 @@ public class UserService {
         user.setProfile(profile);
 
         User saved = users.save(user);
-        return issueFor(saved, request);
+        emailVerificationService.issueFor(saved);
+        IssuedAccessToken access = jwtService.issueAccessToken(saved);
+        return new AuthResponse(access.token(), access.ttl().getSeconds(), toResponse(saved));
     }
 
+    /**
+     * Order matters for enumeration safety: the lock check and the password check
+     * behave the same for unknown emails, and "not verified" is only revealed to
+     * someone who already knows the password.
+     *
+     * <p>{@code noRollbackFor}: a wrong password throws, but the failed-attempt
+     * count (and any lock) written before the throw must still commit.
+     */
+    @Transactional(noRollbackFor = {
+            BadCredentialsException.class, AccountLockedException.class, EmailNotVerifiedException.class})
     public AuthResult login(LoginRequest req, HttpServletRequest request) {
-        // Same message either way so the response cannot be used to enumerate accounts.
-        User user = users.findByEmailIgnoreCase(normalize(req.email()))
-                .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
+        String email = normalize(req.email());
+        User user = users.findByEmailIgnoreCase(email).orElse(null);
 
-        if (!passwordEncoder.matches(req.password(), user.getPasswordHash())) {
+        loginAttempts.assertNotLocked(user, email);
+
+        boolean passwordOk = user != null
+                ? passwordEncoder.matches(req.password(), user.getPasswordHash())
+                : matchesDummy(req.password());
+        if (!passwordOk) {
+            loginAttempts.recordFailure(user, email);
+            // Same message either way so the response cannot be used to enumerate accounts.
             throw new BadCredentialsException("Invalid email or password");
         }
 
+        loginAttempts.clear(user);
+        if (!user.isEmailVerified()) {
+            throw new EmailNotVerifiedException();
+        }
         return issueFor(user, request);
+    }
+
+    /** Spends the emailed token, marks the address verified and signs the user in. */
+    public AuthResult verifyEmail(String rawToken, HttpServletRequest request) {
+        User user = emailVerificationService.verify(rawToken);
+        loginAttempts.clear(user);
+        return issueFor(user, request);
+    }
+
+    public void resendVerification(String email) {
+        emailVerificationService.resend(email);
+    }
+
+    // Unknown emails still pay for a bcrypt comparison, so response time doesn't
+    // reveal whether an account exists.
+    private volatile String dummyHash;
+
+    private boolean matchesDummy(String rawPassword) {
+        if (dummyHash == null) {
+            dummyHash = passwordEncoder.encode("dummy-password-for-timing");
+        }
+        passwordEncoder.matches(rawPassword == null ? "" : rawPassword, dummyHash);
+        return false;
     }
 
     /**
@@ -148,6 +205,7 @@ public class UserService {
         contactRepository.deleteByOwnerId(userId);
         refreshTokenService.deleteAllForUser(userId);
         passwordResetService.deleteAllForUser(userId);
+        emailVerificationService.deleteAllForUser(userId);
         users.delete(user);
 
         if (avatarKey != null) {

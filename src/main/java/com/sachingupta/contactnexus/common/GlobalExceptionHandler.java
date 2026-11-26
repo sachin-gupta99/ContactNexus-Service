@@ -1,5 +1,6 @@
 package com.sachingupta.contactnexus.common;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -45,6 +46,32 @@ public class GlobalExceptionHandler {
                 "error", "Unauthorized",
                 "message", ex.getMessage()
         ));
+    }
+
+    /** {@code code} lets the UI show "resend the link" instead of a generic error. */
+    @ExceptionHandler(EmailNotVerifiedException.class)
+    public ResponseEntity<Map<String, Object>> handleNotVerified(EmailNotVerifiedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                "timestamp", Instant.now(),
+                "status", 403,
+                "error", "Forbidden",
+                "code", "EMAIL_NOT_VERIFIED",
+                "message", ex.getMessage()
+        ));
+    }
+
+    @ExceptionHandler(AccountLockedException.class)
+    public ResponseEntity<Map<String, Object>> handleLocked(AccountLockedException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header(HttpHeaders.RETRY_AFTER, String.valueOf(ex.getRetryAfterSeconds()))
+                .body(Map.of(
+                        "timestamp", Instant.now(),
+                        "status", 429,
+                        "error", "Too Many Requests",
+                        "code", "ACCOUNT_LOCKED",
+                        "message", ex.getMessage(),
+                        "retryAfterSeconds", ex.getRetryAfterSeconds()
+                ));
     }
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)

@@ -22,6 +22,7 @@ public class RefreshTokenCleanup {
 
     private final RefreshTokenRepository refreshTokens;
     private final PasswordResetTokenRepository passwordResetTokens;
+    private final EmailVerificationService emailVerifications;
 
     @Scheduled(cron = "0 15 3 * * *")
     @Transactional
@@ -31,6 +32,11 @@ public class RefreshTokenCleanup {
         int refreshDeleted = refreshTokens.deleteExpiredBefore(now);
         if (refreshDeleted > 0) {
             log.info("Purged {} expired refresh tokens", refreshDeleted);
+        }
+
+        int verifyDeleted = emailVerifications.purgeExpiredOrUsed(now);
+        if (verifyDeleted > 0) {
+            log.info("Purged {} expired or used email-verification tokens", verifyDeleted);
         }
 
         int resetDeleted = passwordResetTokens.deleteExpiredOrUsed(now);
