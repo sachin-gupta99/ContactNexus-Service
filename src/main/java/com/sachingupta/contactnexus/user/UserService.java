@@ -2,6 +2,10 @@ package com.sachingupta.contactnexus.user;
 
 import com.sachingupta.contactnexus.common.ConflictException;
 import com.sachingupta.contactnexus.common.NotFoundException;
+import com.sachingupta.contactnexus.contact.ContactRepository;
+import com.sachingupta.contactnexus.security.PasswordResetService;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import com.sachingupta.contactnexus.security.JwtService;
 import com.sachingupta.contactnexus.security.JwtService.IssuedAccessToken;
 import com.sachingupta.contactnexus.security.RefreshTokenService;
@@ -30,6 +34,8 @@ public class UserService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final RefreshTokenService refreshTokenService;
+    private final PasswordResetService passwordResetService;
+    private final ContactRepository contactRepository;
     private final AvatarStorage avatarStorage;
 
     public AuthResult signup(SignupRequest req, HttpServletRequest request) {
@@ -110,6 +116,56 @@ public class UserService {
             applyDetails(profile, req.profile());
         }
         return toResponse(user);
+    }
+
+    /**
+     * Revokes every session, including this one, then issues fresh tokens so the
+     * caller stays signed in while every other device is signed out.
+     */
+    public AuthResult changePassword(Long userId, ChangePasswordRequest req, HttpServletRequest request) {
+        User user = requireById(userId);
+        requirePassword(user, req.currentPassword(), "Current password is incorrect");
+        user.setPasswordHash(passwordEncoder.encode(req.newPassword()));
+        refreshTokenService.revokeAllForUser(userId);
+        passwordResetService.sendPasswordChangedEmail(user);
+        return issueFor(user, request);
+    }
+
+    public void logoutEverywhere(Long userId) {
+        refreshTokenService.revokeAllForUser(userId);
+    }
+
+    /**
+     * Removes the user and everything they own. Contacts and tokens are deleted
+     * explicitly (contacts.owner_id has no foreign key; the token tables reference
+     * users without cascade), and the avatar object is removed after commit.
+     */
+    public void deleteAccount(Long userId, DeleteAccountRequest req) {
+        User user = requireById(userId);
+        requirePassword(user, req.password(), "Password is incorrect");
+
+        String avatarKey = user.getProfile() == null ? null : user.getProfile().getImageKey();
+        contactRepository.deleteByOwnerId(userId);
+        refreshTokenService.deleteAllForUser(userId);
+        passwordResetService.deleteAllForUser(userId);
+        users.delete(user);
+
+        if (avatarKey != null) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    avatarStorage.delete(avatarKey);
+                }
+            });
+        }
+    }
+
+    // 400 rather than 401: the session is valid, only the typed password is wrong,
+    // and a 401 would make the UI try to refresh the session.
+    private void requirePassword(User user, String rawPassword, String message) {
+        if (!passwordEncoder.matches(rawPassword, user.getPasswordHash())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+        }
     }
 
     /**

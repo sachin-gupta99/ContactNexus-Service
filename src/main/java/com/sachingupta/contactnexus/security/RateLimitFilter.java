@@ -35,6 +35,9 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@code /signup}           - 5 per hour  (caps mass account creation)</li>
  *   <li>{@code /forgot-password}  - 3 per hour  (protects Brevo email quota)</li>
  *   <li>{@code /reset-password}   - 10 per hour (defence against token brute force)</li>
+ *   <li>{@code POST /change-password} and {@code DELETE /users/me} - 10 per 15 min,
+ *       shared (both re-check the password, so a stolen access token can't be used
+ *       to brute-force it)</li>
  * </ul>
  *
  * <p><strong>Known limitations</strong>:
@@ -62,11 +65,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final Bandwidth SIGNUP_LIMIT = Bandwidth.simple(5,  Duration.ofHours(1));
     private static final Bandwidth FORGOT_LIMIT = Bandwidth.simple(3,  Duration.ofHours(1));
     private static final Bandwidth RESET_LIMIT  = Bandwidth.simple(10, Duration.ofHours(1));
+    private static final Bandwidth PASSWORD_CHECK_LIMIT = Bandwidth.simple(10, Duration.ofMinutes(15));
 
     private final Map<String, Bucket> loginBuckets  = new ConcurrentHashMap<>();
     private final Map<String, Bucket> signupBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> forgotBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> resetBuckets  = new ConcurrentHashMap<>();
+    private final Map<String, Bucket> passwordCheckBuckets = new ConcurrentHashMap<>();
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -98,16 +103,20 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private Bucket bucketFor(HttpServletRequest request) {
-        // Only POST requests consume tokens; GETs on the same path (if any) pass through.
+        String ip = clientIp(request);
+        if ("DELETE".equalsIgnoreCase(request.getMethod()) && "/api/v1/users/me".equals(request.getRequestURI())) {
+            return passwordCheckBuckets.computeIfAbsent(ip, k -> bucket(PASSWORD_CHECK_LIMIT));
+        }
+        // Otherwise only POST requests consume tokens; GETs on the same path (if any) pass through.
         if (!"POST".equalsIgnoreCase(request.getMethod())) {
             return null;
         }
-        String ip = clientIp(request);
         return switch (request.getRequestURI()) {
             case "/api/v1/auth/login"            -> loginBuckets.computeIfAbsent(ip, k -> bucket(LOGIN_LIMIT));
             case "/api/v1/auth/signup"           -> signupBuckets.computeIfAbsent(ip, k -> bucket(SIGNUP_LIMIT));
             case "/api/v1/auth/forgot-password"  -> forgotBuckets.computeIfAbsent(ip, k -> bucket(FORGOT_LIMIT));
             case "/api/v1/auth/reset-password"   -> resetBuckets.computeIfAbsent(ip, k -> bucket(RESET_LIMIT));
+            case "/api/v1/auth/change-password"  -> passwordCheckBuckets.computeIfAbsent(ip, k -> bucket(PASSWORD_CHECK_LIMIT));
             default -> null;
         };
     }

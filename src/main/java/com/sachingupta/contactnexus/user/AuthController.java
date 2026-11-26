@@ -5,6 +5,7 @@ import com.sachingupta.contactnexus.security.PasswordResetService;
 import com.sachingupta.contactnexus.security.RefreshCookie;
 import com.sachingupta.contactnexus.user.UserService.AuthResult;
 import com.sachingupta.contactnexus.user.dto.AuthResponse;
+import com.sachingupta.contactnexus.user.dto.ChangePasswordRequest;
 import com.sachingupta.contactnexus.user.dto.ForgotPasswordRequest;
 import com.sachingupta.contactnexus.user.dto.LoginRequest;
 import com.sachingupta.contactnexus.user.dto.ResetPasswordRequest;
@@ -87,6 +88,26 @@ public class AuthController {
     @ResponseStatus(HttpStatus.OK)
     public void resetPassword(@Valid @RequestBody ResetPasswordRequest body) {
         passwordResetService.completeReset(body.token(), body.newPassword());
+    }
+
+    /**
+     * Signs out every other device; this one gets a fresh cookie and access token
+     * so the user isn't bounced to the sign-in page mid-action.
+     */
+    @PostMapping("/change-password")
+    public AuthResponse changePassword(@AuthenticationPrincipal AuthUser principal,
+                                       @Valid @RequestBody ChangePasswordRequest body,
+                                       HttpServletRequest request,
+                                       HttpServletResponse response) {
+        return writeResult(service.changePassword(principal.getId(), body, request), response);
+    }
+
+    /** Revokes every refresh token for the user, including this device's. */
+    @PostMapping("/logout-all")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logoutAll(@AuthenticationPrincipal AuthUser principal, HttpServletResponse response) {
+        service.logoutEverywhere(principal.getId());
+        refreshCookie.clear(response);
     }
 
     private AuthResponse writeResult(AuthResult result, HttpServletResponse response) {

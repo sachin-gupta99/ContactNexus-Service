@@ -93,6 +93,10 @@ public class RefreshTokenService {
         refreshTokens.revokeAllForUser(userId, Instant.now());
     }
 
+    public void deleteAllForUser(Long userId) {
+        refreshTokens.deleteAllForUser(userId);
+    }
+
     private IssuedRefreshToken issue(User user, UUID familyId, HttpServletRequest request) {
         byte[] bytes = new byte[TOKEN_BYTES];
         RANDOM.nextBytes(bytes);

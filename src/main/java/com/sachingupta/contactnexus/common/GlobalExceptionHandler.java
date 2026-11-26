@@ -1,7 +1,9 @@
 package com.sachingupta.contactnexus.common;
 
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -52,6 +54,24 @@ public class GlobalExceptionHandler {
                 "status", 413,
                 "error", "Payload Too Large",
                 "message", "Uploaded file exceeds the maximum allowed size of 5MB"
+        ));
+    }
+
+    /**
+     * Spring Boot's default error body omits the reason unless include-message is
+     * enabled, so "Unsupported image type" or "Current password is incorrect" would
+     * reach the client as a bare status. Return it in the same shape as the others.
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> handleStatus(ResponseStatusException ex) {
+        HttpStatusCode status = ex.getStatusCode();
+        String reason = ex.getReason() == null ? "" : ex.getReason();
+        HttpStatus resolved = HttpStatus.resolve(status.value());
+        return ResponseEntity.status(status).body(Map.of(
+                "timestamp", Instant.now(),
+                "status", status.value(),
+                "error", resolved == null ? "Error" : resolved.getReasonPhrase(),
+                "message", reason
         ));
     }
 

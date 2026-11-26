@@ -46,6 +46,10 @@ public class Contact {
     private String linkedinUrl;
     private String instagramUrl;
 
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean favorite = false;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
