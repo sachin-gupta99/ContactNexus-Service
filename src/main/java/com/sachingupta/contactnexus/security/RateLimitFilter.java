@@ -24,7 +24,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Per-IP rate limiting on the unauthenticated auth endpoints. Uses Bucket4j's
+ * Per-IP rate limiting on the auth endpoints and other expensive writes. Uses Bucket4j's
  * token-bucket algorithm with in-memory maps - fine for a single Render instance.
  *
  * <p>Limits chosen to tolerate real-user retries while blunting brute-force and
@@ -38,6 +38,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *   <li>{@code POST /change-password} and {@code DELETE /users/me} - 10 per 15 min,
  *       shared (both re-check the password, so a stolen access token can't be used
  *       to brute-force it)</li>
+ *   <li>{@code /contacts/import}  - 20 per hour (each call can insert up to 500 rows)</li>
  * </ul>
  *
  * <p><strong>Known limitations</strong>:
@@ -66,12 +67,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final Bandwidth FORGOT_LIMIT = Bandwidth.simple(3,  Duration.ofHours(1));
     private static final Bandwidth RESET_LIMIT  = Bandwidth.simple(10, Duration.ofHours(1));
     private static final Bandwidth PASSWORD_CHECK_LIMIT = Bandwidth.simple(10, Duration.ofMinutes(15));
+    private static final Bandwidth IMPORT_LIMIT = Bandwidth.simple(20, Duration.ofHours(1));
 
     private final Map<String, Bucket> loginBuckets  = new ConcurrentHashMap<>();
     private final Map<String, Bucket> signupBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> forgotBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> resetBuckets  = new ConcurrentHashMap<>();
     private final Map<String, Bucket> passwordCheckBuckets = new ConcurrentHashMap<>();
+    private final Map<String, Bucket> importBuckets = new ConcurrentHashMap<>();
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -117,6 +120,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
             case "/api/v1/auth/forgot-password"  -> forgotBuckets.computeIfAbsent(ip, k -> bucket(FORGOT_LIMIT));
             case "/api/v1/auth/reset-password"   -> resetBuckets.computeIfAbsent(ip, k -> bucket(RESET_LIMIT));
             case "/api/v1/auth/change-password"  -> passwordCheckBuckets.computeIfAbsent(ip, k -> bucket(PASSWORD_CHECK_LIMIT));
+            case "/api/v1/contacts/import"       -> importBuckets.computeIfAbsent(ip, k -> bucket(IMPORT_LIMIT));
             default -> null;
         };
     }

@@ -1,6 +1,8 @@
 package com.sachingupta.contactnexus.contact;
 
 import com.sachingupta.contactnexus.common.PageResponse;
+import com.sachingupta.contactnexus.contact.dto.ContactImportRequest;
+import com.sachingupta.contactnexus.contact.dto.ContactImportResult;
 import com.sachingupta.contactnexus.contact.dto.ContactRequest;
 import com.sachingupta.contactnexus.contact.dto.ContactResponse;
 import com.sachingupta.contactnexus.contact.dto.ContactStats;
@@ -30,6 +32,13 @@ public class ContactController {
                                               Pageable pageable) {
         return PageResponse.from(
                 service.list(principal.getId(), q, favorite, pageable).map(ContactResponse::from));
+    }
+
+    /** Bulk create from a parsed .vcf / .csv; duplicates (by email) are skipped, not errors. */
+    @PostMapping("/import")
+    public ContactImportResult importContacts(@AuthenticationPrincipal AuthUser principal,
+                                              @Valid @RequestBody ContactImportRequest body) {
+        return service.importAll(principal.getId(), body.contacts());
     }
 
     @GetMapping("/stats")
