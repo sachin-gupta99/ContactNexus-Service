@@ -59,6 +59,18 @@ Each refresh-token family is one device. `GET /auth/sessions` lists live familie
 
 The revoke-all step closes the "attacker has a stolen refresh cookie" window the moment the real user resets.
 
+### Client IP (for rate limits and the devices list)
+
+`X-Forwarded-For` alone can't be trusted: Render [appends to whatever chain the caller sent](https://render.com/articles/how-to-proxy-analytics-through-your-own-domain), so anyone calling the Render URL directly controls its left-most value. Vercel, by contrast, [overwrites it with the real visitor IP](https://vercel.com/docs/headers/request-headers). `ClientIpResolver` therefore:
+
+1. trusts the left-most `X-Forwarded-For` only on requests carrying the shared secret Vercel adds on the `/api` rewrite (`X-Origin-Secret`, compared in constant time; see the UI's `vercel.json`);
+2. otherwise uses the edge-set header (`CLIENT_IP_EDGE_HEADER`, `CF-Connecting-IP` on Render), never `X-Forwarded-For`;
+3. otherwise the socket address (local dev).
+
+Without `PROXY_SECRET` the old behaviour is kept (with a startup warning), so a half-finished rollout can't put every user behind one Vercel IP.
+
+**Rollout order:** set `ORIGIN_SECRET` on Vercel and deploy the UI first, then set the same value as `PROXY_SECRET` on Render.
+
 ### Rate limits
 
 Per-IP token-bucket limiter (`RateLimitFilter`) in front of the auth chain, Bucket4j in-memory:
@@ -147,6 +159,8 @@ Values with a leading `/` are read from AWS SSM Parameter Store; anything else i
 | `MAIL_USERNAME` / `MAIL_PASSWORD` | Gmail + app password | Only needed when `APP_EMAIL_MODE=smtp` (does not work on Render free — SMTP egress blocked). |
 | `S3_BUCKET` / `S3_REGION` | `contact-nexus` / `ap-south-1` | Avatar bucket (defaults shown). Keep all public access blocked. |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | IAM user keys | Least-privilege user scoped to `avatars/*` (see DEPLOY.md). Not needed on AWS with a task role. |
+| `PROXY_SECRET` | `openssl rand -base64 32` | Must equal `ORIGIN_SECRET` on Vercel. Marks requests that really came through the Vercel rewrite. |
+| `CLIENT_IP_EDGE_HEADER` | `CF-Connecting-IP` | Header the edge in front of the app sets itself; used for requests that bypass Vercel. Empty locally. |
 
 ### SSM mode (optional)
 
@@ -173,13 +187,16 @@ mvn spring-boot:run
 
 Health: `http://localhost:8080/actuator/health`. Flyway log on first boot shows every applied migration.
 
-Tests: `mvn verify`. They are plain unit tests (Mockito, Spring mock servlet requests, Bean Validation) and need no database.
+Tests:
+
+- `mvn test`: unit tests (`*Test`, no database).
+- `mvn verify`: unit tests plus integration tests (`*IT`). The integration tests boot the whole app with MockMvc against a **real PostgreSQL 16** started in-process (zonky embedded binaries, so no Docker locally or in CI), and Flyway runs every migration. They cover search escaping, tag filters and sorting, cascades, cross-user isolation (404s), import de-duplication, the auth flow (verification, refresh-token reuse, lockout) and the devices list. S3 and email are mocked.
 
 ## CI
 
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every pull request and push to `main`:
 
-- **Build and test**: `mvn verify` on Temurin 21 with the Maven cache. The Docker build skips tests, so this is the only place they run.
+- **Build and test**: `mvn verify` (unit + integration tests against embedded PostgreSQL 16) on Temurin 21 with the Maven cache. The Docker build skips tests, so this is the only place they run.
 - **Docker image builds**: `docker build .`, so a Dockerfile change that would break the Render deploy fails here first.
 
 ## Project structure
