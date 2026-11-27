@@ -85,6 +85,8 @@ Per-IP token-bucket limiter (`RateLimitFilter`) in front of the auth chain, Buck
 | `/resend-verification` | 3 per hour | Protects email-provider quota |
 | `POST /change-password` + `DELETE /users/me` (shared) | 10 per 15 min | Both re-check the password; stops a stolen access token being used to brute-force it |
 | `/contacts/import` | 20 per hour | Each call can insert up to 500 rows |
+| `GET /public/**` | 60 per minute | Shared-card links; blunts token guessing |
+| `POST /internal/jobs/**` | 10 per hour | Job trigger (also token-guarded) |
 
 Exceeding the limit returns 429 with an RFC 6585 `Retry-After` header.
 
@@ -108,7 +110,18 @@ Exceeding the limit returns 429 with an RFC 6585 `Retry-After` header.
 | `PUT` | `/api/v1/users/me` | bearer | update name + profile fields |
 | `PUT` | `/api/v1/users/me/avatar` | bearer, multipart | uploads avatar to S3, returns `{ imageUrl }` (presigned) |
 | `DELETE` | `/api/v1/users/me` | bearer | `{ password }`; deletes the account, its contacts, tokens and avatar. 400 if the password is wrong |
-| `GET` | `/api/v1/contacts?q=&favorite=&tag=&page=&size=&sort=` | bearer | list (paged, searchable, `favorite=true` for starred only, `tag=` case-insensitive). `sort` is whitelisted (`firstName`, `lastName`, `email`, `createdAt`, `updatedAt`, `favorite`) and repeatable, e.g. `sort=favorite,desc&sort=firstName,asc` — returns `PageResponse<ContactResponse>` |
+| `GET` | `/api/v1/contacts?q=&favorite=&tag=&page=&size=&sort=` | bearer | list (paged, searchable, `favorite=true` for starred only, `tag=` case-insensitive). `sort` is whitelisted (`firstName`, `lastName`, `email`, `createdAt`, `updatedAt`, `favorite`, `lastContactedAt`, the last with nulls last) and repeatable, e.g. `sort=favorite,desc&sort=firstName,asc`. From 3 characters `q` is also typo-tolerant (pg_trgm `strict_word_similarity` on the full name: "rvi" finds Ravi) — returns `PageResponse<ContactResponse>` |
+| `GET` | `/api/v1/contacts/{id}/interactions` | bearer | timeline, newest first (CALL / MEETING / EMAIL / MESSAGE / OTHER) |
+| `POST` | `/api/v1/contacts/{id}/interactions` | bearer | `{ type, note?, occurredAt? }` (not in the future); updates `lastContactedAt` |
+| `DELETE` | `/api/v1/contacts/{id}/interactions/{iid}` | bearer | recomputes `lastContactedAt` |
+| `GET` | `/api/v1/contacts/birthdays?days=30` | bearer | `[{ contact, date, inDays, turning }]` soonest first |
+| `POST` | `/api/v1/contacts/bulk` | bearer | `{ ids (≤500), action: FAVORITE\|UNFAVORITE\|ADD_TAGS\|REMOVE_TAGS\|DELETE, tags? }` → `{ affected }`; other users' ids ignored |
+| `POST` | `/api/v1/contacts/merge` | bearer | `{ keepId, mergeIds, values, photoFromId? }`: chosen values, tags combined (unless given), timeline moved, favourite if any; others deleted |
+| `PUT` | `/api/v1/users/me/preferences` | bearer | `{ birthdayReminders }` |
+| `GET` / `PUT` / `DELETE` | `/api/v1/users/me/card-share` | bearer | shared-card settings: chosen fields (`EMAIL PHONE WORK ADDRESS SOCIAL BIO PHOTO`); PUT turns it on |
+| `POST` | `/api/v1/users/me/card-share/rotate` | bearer | new link; the old one stops working |
+| `GET` | `/api/v1/public/cards/{token}` | **public** | only the chosen fields (`Cache-Control: no-store`) |
+| `POST` | `/api/v1/internal/jobs/birthday-reminders` | `X-Jobs-Token` | runs tomorrow's reminders; 404 unless `JOBS_TOKEN` is set |
 | `GET` | `/api/v1/contacts/tags` | bearer | `[{ name, count }]`, alphabetical |
 | `DELETE` | `/api/v1/contacts/tags/{name}` | bearer | removes the tag from every contact |
 | `GET` | `/api/v1/contacts/duplicates` | bearer | groups sharing an email (ignoring case) or phone (last 10 digits) |
@@ -137,6 +150,9 @@ Flyway owns the schema (`ddl-auto: validate`). Migrations in `src/main/resources
 | `V5__contacts_favorite.sql` | `contacts.favorite` boolean (default `false`) |
 | `V6__email_verification_and_lockout.sql` | `users.email_verified` (existing rows set to true), `failed_login_attempts`, `locked_until`; `email_verification_tokens` |
 | `V7__contact_tags_and_photos.sql` | `tags` (unique per owner ignoring case), `contact_tags` (cascading), `contacts.image_key` |
+| `V8__notes_timeline_birthdays.sql` | `contacts.notes`, `last_contacted_at`, birthday month/day/year (+ check, partial index); `interactions` (cascading); `users.birthday_reminders`; `reminder_log` |
+| `V9__card_shares.sql` | `card_shares` (token, chosen fields; cascades with the user) |
+| `V10__trigram_search.sql` | `CREATE EXTENSION pg_trgm` (Neon supports it; the DB owner can create it) |
 
 `baseline-on-migrate: true` + `baseline-version: 1` means an existing database (e.g. prod Neon populated from the old `ddl-auto: update` era) is stamped at V1 without re-running `V1__init.sql`. Fresh databases execute every migration in full.
 
@@ -161,6 +177,8 @@ Values with a leading `/` are read from AWS SSM Parameter Store; anything else i
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | IAM user keys | Least-privilege user scoped to `avatars/*` (see DEPLOY.md). Not needed on AWS with a task role. |
 | `PROXY_SECRET` | `openssl rand -base64 32` | Must equal `ORIGIN_SECRET` on Vercel. Marks requests that really came through the Vercel rewrite. |
 | `CLIENT_IP_EDGE_HEADER` | `CF-Connecting-IP` | Header the edge in front of the app sets itself; used for requests that bypass Vercel. Empty locally. |
+| `JOBS_TOKEN` | `openssl rand -base64 32` | Enables `POST /internal/jobs/birthday-reminders`; same value as the `JOBS_TOKEN` GitHub secret used by `.github/workflows/daily-jobs.yml`. |
+| `REMINDERS_ZONE` | `Asia/Kolkata` (default) | Birthdays are matched by calendar date in this zone; reminders go out at 08:00. |
 
 ### SSM mode (optional)
 
@@ -173,6 +191,10 @@ If `db.url` is `/ContactNexus/database/directUrl` and the app has AWS credential
 | `/ContactNexus/database/password` | SecureString |
 
 Needs `ssm:GetParameter` on `/ContactNexus/database/*` + `kms:Decrypt` on the key.
+
+### Birthday reminders
+
+Every day the app emails each user (once) about contacts whose birthday is **tomorrow**; 29 February birthdays are reminded on the 28th in non-leap years. Render's free instance sleeps, so the in-app `@Scheduled` job (08:00 `REMINDERS_ZONE`) can't be relied on; `.github/workflows/daily-jobs.yml` calls the token-guarded job endpoint at 02:30 UTC instead, which also wakes the service. Each reminder is claimed in `reminder_log` (`insert ... on conflict do nothing`) before it is sent, so the two never double-send. Users can opt out in Settings.
 
 ## Run locally
 
