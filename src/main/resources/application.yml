@@ -89,6 +89,15 @@ jwt:
   refresh-cookie-same-site: ${JWT_REFRESH_COOKIE_SAME_SITE:Lax}
 
 app:
+  # Daily jobs. Render's free instance sleeps, so besides the in-app cron a
+  # GitHub Actions workflow POSTs /api/v1/internal/jobs/birthday-reminders with
+  # this token (header X-Jobs-Token). Unset = the HTTP trigger is disabled (404).
+  jobs:
+    token: ${JOBS_TOKEN:}
+  reminders:
+    # Birthdays are matched by calendar date in this zone; emails go out at 08:00.
+    zone: ${REMINDERS_ZONE:Asia/Kolkata}
+    cron: "0 0 8 * * *"
   client-ip:
     # Shared secret Vercel adds as X-Origin-Secret on the /api rewrite (see the
     # UI's vercel.json). When it matches, the left-most X-Forwarded-For value

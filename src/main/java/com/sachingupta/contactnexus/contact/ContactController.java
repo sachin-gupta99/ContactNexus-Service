@@ -1,7 +1,13 @@
 package com.sachingupta.contactnexus.contact;
 
 import com.sachingupta.contactnexus.common.PageResponse;
+import com.sachingupta.contactnexus.contact.dto.BulkRequest;
+import com.sachingupta.contactnexus.contact.dto.BulkResult;
 import com.sachingupta.contactnexus.contact.dto.ContactImportRequest;
+import com.sachingupta.contactnexus.contact.dto.InteractionRequest;
+import com.sachingupta.contactnexus.contact.dto.InteractionResponse;
+import com.sachingupta.contactnexus.contact.dto.MergeRequest;
+import com.sachingupta.contactnexus.contact.dto.UpcomingBirthday;
 import com.sachingupta.contactnexus.contact.dto.ContactImportResult;
 import com.sachingupta.contactnexus.contact.dto.ContactRequest;
 import com.sachingupta.contactnexus.contact.dto.ContactResponse;
@@ -32,10 +38,13 @@ import java.util.Set;
 public class ContactController {
 
     /** Whitelisted so clients can't sort on internal columns such as owner_id or image_key. */
-    private static final Set<String> SORTABLE = Set.of("firstName", "lastName", "email", "createdAt", "updatedAt", "favorite");
+    private static final Set<String> SORTABLE = Set.of("firstName", "lastName", "email", "createdAt", "updatedAt", "favorite", "lastContactedAt");
 
     private final ContactService service;
     private final ContactMapper mapper;
+    private final ContactBulkService bulk;
+    private final InteractionService interactions;
+    private final BirthdayService birthdays;
 
     /**
      * Multiple sorts are allowed, e.g. {@code sort=favorite,desc&sort=firstName,asc}
@@ -71,6 +80,46 @@ public class ContactController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void deleteTag(@AuthenticationPrincipal AuthUser principal, @PathVariable String name) {
         service.deleteTag(principal.getId(), name);
+    }
+
+    /** Birthdays in the next {@code days} days (today counts as 0), soonest first. */
+    @GetMapping("/birthdays")
+    public List<UpcomingBirthday> upcomingBirthdays(@AuthenticationPrincipal AuthUser principal,
+                                                    @RequestParam(defaultValue = "30") int days) {
+        int window = Math.max(0, Math.min(days, 366));
+        return birthdays.upcoming(principal.getId(), window, java.time.LocalDate.now(birthdays.zone()));
+    }
+
+    /** Favourite, tag, untag or delete up to 500 contacts at once. */
+    @PostMapping("/bulk")
+    public BulkResult bulk(@AuthenticationPrincipal AuthUser principal, @Valid @RequestBody BulkRequest body) {
+        return new BulkResult(bulk.apply(principal.getId(), body));
+    }
+
+    @PostMapping("/merge")
+    public ContactResponse merge(@AuthenticationPrincipal AuthUser principal, @Valid @RequestBody MergeRequest body) {
+        return mapper.toResponse(bulk.merge(principal.getId(), body));
+    }
+
+    @GetMapping("/{id}/interactions")
+    public List<InteractionResponse> interactions(@AuthenticationPrincipal AuthUser principal, @PathVariable Long id) {
+        return interactions.list(principal.getId(), id).stream().map(InteractionResponse::from).toList();
+    }
+
+    @PostMapping("/{id}/interactions")
+    @ResponseStatus(HttpStatus.CREATED)
+    public InteractionResponse addInteraction(@AuthenticationPrincipal AuthUser principal,
+                                              @PathVariable Long id,
+                                              @Valid @RequestBody InteractionRequest body) {
+        return InteractionResponse.from(interactions.add(principal.getId(), id, body));
+    }
+
+    @DeleteMapping("/{id}/interactions/{interactionId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteInteraction(@AuthenticationPrincipal AuthUser principal,
+                                  @PathVariable Long id,
+                                  @PathVariable Long interactionId) {
+        interactions.delete(principal.getId(), id, interactionId);
     }
 
     @GetMapping("/duplicates")

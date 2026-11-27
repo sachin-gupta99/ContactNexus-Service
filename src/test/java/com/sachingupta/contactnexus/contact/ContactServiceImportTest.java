@@ -36,7 +36,7 @@ class ContactServiceImportTest {
 
     private static ContactRequest contact(String firstName, String email) {
         return new ContactRequest(firstName, null, email, null, null, null, null,
-                null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null);
     }
 
     @SuppressWarnings("unchecked")

@@ -42,6 +42,8 @@ import java.util.concurrent.ConcurrentHashMap;
  *       to brute-force it)</li>
  *   <li>{@code /verify-email}     - 10 per hour (defence against token brute force)</li>
  *   <li>{@code /resend-verification} - 3 per hour (protects Brevo email quota)</li>
+ *   <li>{@code GET /public/**}   - 60 per minute (public card links; blunts token guessing)</li>
+ *   <li>{@code POST /internal/jobs/**} - 10 per hour</li>
  *   <li>{@code /contacts/import}  - 20 per hour (each call can insert up to 500 rows)</li>
  * </ul>
  *
@@ -77,6 +79,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private static final Bandwidth PASSWORD_CHECK_LIMIT = Bandwidth.simple(10, Duration.ofMinutes(15));
     private static final Bandwidth VERIFY_LIMIT = Bandwidth.simple(10, Duration.ofHours(1));
     private static final Bandwidth RESEND_LIMIT = Bandwidth.simple(3, Duration.ofHours(1));
+    private static final Bandwidth PUBLIC_CARD_LIMIT = Bandwidth.simple(60, Duration.ofMinutes(1));
+    private static final Bandwidth JOBS_LIMIT = Bandwidth.simple(10, Duration.ofHours(1));
     private static final Bandwidth IMPORT_LIMIT = Bandwidth.simple(20, Duration.ofHours(1));
 
     private final Map<String, Bucket> loginBuckets  = new ConcurrentHashMap<>();
@@ -86,6 +90,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
     private final Map<String, Bucket> passwordCheckBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> verifyBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> resendBuckets = new ConcurrentHashMap<>();
+    private final Map<String, Bucket> publicCardBuckets = new ConcurrentHashMap<>();
+    private final Map<String, Bucket> jobsBuckets = new ConcurrentHashMap<>();
     private final Map<String, Bucket> importBuckets = new ConcurrentHashMap<>();
 
     @Override
@@ -119,6 +125,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private Bucket bucketFor(HttpServletRequest request) {
         String ip = clientIps.resolve(request);
+        String uri = request.getRequestURI();
+        // Public card lookups: enough for real visitors, too few to enumerate tokens.
+        if ("GET".equalsIgnoreCase(request.getMethod()) && uri.startsWith("/api/v1/public/")) {
+            return publicCardBuckets.computeIfAbsent(ip, k -> bucket(PUBLIC_CARD_LIMIT));
+        }
+        if ("POST".equalsIgnoreCase(request.getMethod()) && uri.startsWith("/api/v1/internal/jobs/")) {
+            return jobsBuckets.computeIfAbsent(ip, k -> bucket(JOBS_LIMIT));
+        }
         if ("DELETE".equalsIgnoreCase(request.getMethod()) && "/api/v1/users/me".equals(request.getRequestURI())) {
             return passwordCheckBuckets.computeIfAbsent(ip, k -> bucket(PASSWORD_CHECK_LIMIT));
         }

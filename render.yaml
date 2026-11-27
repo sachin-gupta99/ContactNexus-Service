@@ -63,6 +63,9 @@ services:
       # on the /api rewrite). Generate with: openssl rand -base64 32
       - key: PROXY_SECRET
         sync: false
+      # Same value as the JOBS_TOKEN GitHub secret used by .github/workflows/daily-jobs.yml.
+      - key: JOBS_TOKEN
+        sync: false
       - key: DB_URL
         sync: false
       - key: DB_USERNAME

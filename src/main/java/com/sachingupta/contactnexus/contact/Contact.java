@@ -57,6 +57,18 @@ public class Contact {
     @Builder.Default
     private boolean favorite = false;
 
+    /** Free-text notes, longer than the bio. */
+    @Column(length = 10000)
+    private String notes;
+
+    /** Newest interaction's time; maintained by ContactService, not set by clients. */
+    private Instant lastContactedAt;
+
+    /** Month and day are set together; the year is optional. */
+    private Integer birthdayMonth;
+    private Integer birthdayDay;
+    private Integer birthdayYear;
+
     // Batch-fetched so a page of 12 contacts loads its tags in one extra query, not 12.
     @ManyToMany
     @JoinTable(name = "contact_tags",

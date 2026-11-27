@@ -53,6 +53,8 @@ public class SecurityConfig {
                                 "/api/v1/auth/verify-email",
                                 "/api/v1/auth/resend-verification").permitAll()
                         .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                        // Public card links (token = permission) and the token-guarded job trigger.
+                        .requestMatchers("/api/v1/public/**", "/api/v1/internal/jobs/**").permitAll()
                         .anyRequest().authenticated())
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(unauthorizedEntryPoint()))
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);

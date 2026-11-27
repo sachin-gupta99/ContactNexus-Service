@@ -180,6 +180,12 @@ public class UserService {
         return toResponse(user);
     }
 
+    public UserResponse updatePreferences(Long userId, PreferencesRequest req) {
+        User user = requireById(userId);
+        user.setBirthdayReminders(req.birthdayReminders());
+        return toResponse(user);
+    }
+
     /**
      * Revokes every session, including this one, then issues fresh tokens so the
      * caller stays signed in while every other device is signed out.

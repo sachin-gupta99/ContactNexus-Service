@@ -9,6 +9,8 @@ import com.sachingupta.contactnexus.contact.dto.TagCount;
 import com.sachingupta.contactnexus.user.AvatarStorage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +39,7 @@ public class ContactService {
     @Transactional(readOnly = true)
     public Page<Contact> list(Long ownerId, String query, boolean favoritesOnly, String tag, Pageable pageable) {
         String tagFilter = tag == null ? "" : tag.trim().toLowerCase(Locale.ROOT);
-        return repository.search(ownerId, likePattern(query), favoritesOnly, tagFilter, pageable);
+        return repository.search(ownerId, likePattern(query), fuzzyTerm(query), favoritesOnly, tagFilter, pageable);
     }
 
     public Contact setFavorite(Long ownerId, Long id, boolean favorite) {
@@ -72,6 +74,16 @@ public class ContactService {
     @Transactional(readOnly = true)
     public List<DuplicateFinder.Group> duplicates(Long ownerId) {
         return DuplicateFinder.find(repository.findAllByOwnerId(ownerId));
+    }
+
+    /**
+     * Typo tolerance only kicks in from 3 characters: shorter terms share a
+     * trigram with almost every name and would match everything.
+     */
+    static String fuzzyTerm(String query) {
+        if (query == null) return "";
+        String q = query.trim().toLowerCase(Locale.ROOT);
+        return q.length() >= 3 ? q : "";
     }
 
     /** Case-insensitive "contains" pattern; % and _ typed by the user match literally. */
@@ -138,7 +150,7 @@ public class ContactService {
     }
 
     private static Contact toEntity(Long ownerId, ContactRequest req) {
-        return Contact.builder()
+        Contact c = Contact.builder()
                 .ownerId(ownerId)
                 .firstName(req.firstName())
                 .lastName(req.lastName())
@@ -154,7 +166,37 @@ public class ContactService {
                 .githubUrl(req.githubUrl())
                 .linkedinUrl(req.linkedinUrl())
                 .instagramUrl(req.instagramUrl())
+                .notes(req.notes())
                 .build();
+        applyBirthday(c, req);
+        return c;
+    }
+
+    /**
+     * Month and day together, or nothing. The year is optional; without one,
+     * 29 February is allowed. A birth date can't be in the future.
+     */
+    static void applyBirthday(Contact c, ContactRequest req) {
+        Integer m = req.birthdayMonth(), d = req.birthdayDay(), y = req.birthdayYear();
+        if (m == null && d == null && y == null) {
+            c.setBirthdayMonth(null);
+            c.setBirthdayDay(null);
+            c.setBirthdayYear(null);
+            return;
+        }
+        if (m == null || d == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A birthday needs both a month and a day");
+        }
+        java.time.YearMonth ym = java.time.YearMonth.of(y != null ? y : 2000, m);
+        if (d > ym.lengthOfMonth()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "That day doesn't exist in that month");
+        }
+        if (y != null && ym.atDay(d).isAfter(java.time.LocalDate.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "A birthday can't be in the future");
+        }
+        c.setBirthdayMonth(m);
+        c.setBirthdayDay(d);
+        c.setBirthdayYear(y);
     }
 
     public Contact update(Long ownerId, Long id, ContactRequest req) {
@@ -177,6 +219,8 @@ public class ContactService {
         contact.setGithubUrl(req.githubUrl());
         contact.setLinkedinUrl(req.linkedinUrl());
         contact.setInstagramUrl(req.instagramUrl());
+        contact.setNotes(req.notes());
+        applyBirthday(contact, req);
         if (req.tags() != null) {
             List<String> names = TagService.normalize(req.tags());
             contact.setTags(tagsFor(names, tagService.resolve(ownerId, names)));

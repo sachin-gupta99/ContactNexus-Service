@@ -2,7 +2,10 @@ package com.sachingupta.contactnexus.user;
 
 import com.sachingupta.contactnexus.security.AuthUser;
 import com.sachingupta.contactnexus.security.RefreshCookie;
+import com.sachingupta.contactnexus.user.dto.CardShareRequest;
+import com.sachingupta.contactnexus.user.dto.CardShareResponse;
 import com.sachingupta.contactnexus.user.dto.DeleteAccountRequest;
+import com.sachingupta.contactnexus.user.dto.PreferencesRequest;
 import com.sachingupta.contactnexus.user.dto.UpdateProfileRequest;
 import com.sachingupta.contactnexus.user.dto.UserResponse;
 import jakarta.servlet.http.HttpServletResponse;
@@ -22,6 +25,7 @@ import java.util.Map;
 public class UserController {
 
     private final UserService service;
+    private final CardShareService cardShares;
     private final RefreshCookie refreshCookie;
 
     @GetMapping("/me")
@@ -39,6 +43,36 @@ public class UserController {
     public Map<String, String> uploadAvatar(@AuthenticationPrincipal AuthUser principal,
                                             @RequestParam("file") MultipartFile file) {
         return Map.of("imageUrl", service.updateAvatar(principal.getId(), file));
+    }
+
+    @PutMapping("/me/preferences")
+    public UserResponse updatePreferences(@AuthenticationPrincipal AuthUser principal,
+                                          @Valid @RequestBody PreferencesRequest body) {
+        return service.updatePreferences(principal.getId(), body);
+    }
+
+    @GetMapping("/me/card-share")
+    public CardShareResponse cardShare(@AuthenticationPrincipal AuthUser principal) {
+        return cardShares.get(principal.getId());
+    }
+
+    /** Turns the public card on (creating its link) or changes which fields it shows. */
+    @PutMapping("/me/card-share")
+    public CardShareResponse saveCardShare(@AuthenticationPrincipal AuthUser principal,
+                                           @Valid @RequestBody CardShareRequest body) {
+        return cardShares.save(principal.getId(), body.fields());
+    }
+
+    /** A new link; the old one stops working. */
+    @PostMapping("/me/card-share/rotate")
+    public CardShareResponse rotateCardShare(@AuthenticationPrincipal AuthUser principal) {
+        return cardShares.rotate(principal.getId());
+    }
+
+    @DeleteMapping("/me/card-share")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void disableCardShare(@AuthenticationPrincipal AuthUser principal) {
+        cardShares.disable(principal.getId());
     }
 
     /** Permanently deletes the account and everything it owns. Requires the password. */
