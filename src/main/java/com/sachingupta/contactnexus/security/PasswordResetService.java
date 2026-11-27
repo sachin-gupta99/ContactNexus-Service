@@ -1,5 +1,6 @@
 package com.sachingupta.contactnexus.security;
 
+import com.sachingupta.contactnexus.common.ClientIpResolver;
 import com.sachingupta.contactnexus.email.EmailSender;
 import com.sachingupta.contactnexus.user.User;
 import com.sachingupta.contactnexus.user.UserRepository;
@@ -36,6 +37,7 @@ public class PasswordResetService {
     private final PasswordEncoder passwordEncoder;
     private final RefreshTokenService refreshTokenService;
     private final EmailSender emailSender;
+    private final ClientIpResolver clientIps;
     private final LoginAttemptService loginAttempts;
 
     @Value("${app.base-url}")
@@ -66,7 +68,7 @@ public class PasswordResetService {
                 .user(user)
                 .tokenHash(hash(rawToken))
                 .expiresAt(expiresAt)
-                .requestedIp(clientIp(request))
+                .requestedIp(clientIps.resolve(request))
                 .userAgent(trim(request.getHeader("User-Agent"), 512))
                 .build();
         resetTokens.save(token);
@@ -130,13 +132,6 @@ public class PasswordResetService {
         }
     }
 
-    private static String clientIp(HttpServletRequest request) {
-        String fwd = request.getHeader("X-Forwarded-For");
-        if (fwd != null && !fwd.isBlank()) {
-            return trim(fwd.split(",")[0].trim(), 64);
-        }
-        return trim(request.getRemoteAddr(), 64);
-    }
 
     private static String trim(String value, int max) {
         if (value == null) return null;

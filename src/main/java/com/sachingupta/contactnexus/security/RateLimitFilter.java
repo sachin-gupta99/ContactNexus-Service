@@ -1,6 +1,8 @@
 package com.sachingupta.contactnexus.security;
 
+import com.sachingupta.contactnexus.common.ClientIpResolver;
 import io.github.bucket4j.Bandwidth;
+import lombok.RequiredArgsConstructor;
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
 import jakarta.servlet.FilterChain;
@@ -46,7 +48,8 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p><strong>Known limitations</strong>:
  * <ul>
  *   <li>Per-IP, not per-account. An attacker rotating IPs over proxies bypasses this;
- *       account-level lockout is a separate concern.</li>
+ *       {@code LoginAttemptService} adds per-account lockout. The IP comes from
+ *       {@link ClientIpResolver}, which ignores forged {@code X-Forwarded-For} values.</li>
  *   <li>Maps grow with unique IPs. ~200 B per bucket &rarr; 50k IPs ~= 10 MB, fine for
  *       MVP. When it matters, swap {@link ConcurrentHashMap} for a Caffeine cache with
  *       {@code expireAfterAccess(1h)}.</li>
@@ -60,9 +63,12 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
+@RequiredArgsConstructor
 public class RateLimitFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(RateLimitFilter.class);
+
+    private final ClientIpResolver clientIps;
 
     private static final Bandwidth LOGIN_LIMIT  = Bandwidth.simple(10, Duration.ofMinutes(5));
     private static final Bandwidth SIGNUP_LIMIT = Bandwidth.simple(5,  Duration.ofHours(1));
@@ -101,7 +107,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
         }
 
         long retryAfterSeconds = Math.max(1, Duration.ofNanos(probe.getNanosToWaitForRefill()).toSeconds());
-        log.warn("Rate limit tripped for {} on {}", clientIp(request), request.getRequestURI());
+        log.warn("Rate limit tripped for {} on {}", clientIps.resolve(request), request.getRequestURI());
 
         response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
@@ -112,7 +118,7 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private Bucket bucketFor(HttpServletRequest request) {
-        String ip = clientIp(request);
+        String ip = clientIps.resolve(request);
         if ("DELETE".equalsIgnoreCase(request.getMethod()) && "/api/v1/users/me".equals(request.getRequestURI())) {
             return passwordCheckBuckets.computeIfAbsent(ip, k -> bucket(PASSWORD_CHECK_LIMIT));
         }
@@ -137,17 +143,4 @@ public class RateLimitFilter extends OncePerRequestFilter {
         return Bucket.builder().addLimit(limit).build();
     }
 
-    /**
-     * Honours {@code X-Forwarded-For} because requests reach the app through
-     * Vercel's edge (proxy) &rarr; Render's edge (proxy) &rarr; the container.
-     * Both proxies prepend the previous hop's IP, so the first comma-separated
-     * value is the real client.
-     */
-    private static String clientIp(HttpServletRequest request) {
-        String fwd = request.getHeader("X-Forwarded-For");
-        if (fwd != null && !fwd.isBlank()) {
-            return fwd.split(",")[0].trim();
-        }
-        return request.getRemoteAddr();
-    }
 }

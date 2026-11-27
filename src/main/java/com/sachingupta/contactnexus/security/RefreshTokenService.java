@@ -1,5 +1,6 @@
 package com.sachingupta.contactnexus.security;
 
+import com.sachingupta.contactnexus.common.ClientIpResolver;
 import com.sachingupta.contactnexus.common.NotFoundException;
 import com.sachingupta.contactnexus.user.User;
 import com.sachingupta.contactnexus.user.dto.SessionResponse;
@@ -35,6 +36,7 @@ public class RefreshTokenService {
 
     private final RefreshTokenRepository refreshTokens;
     private final UserRepository users;
+    private final ClientIpResolver clientIps;
 
     @Value("${jwt.refresh-ttl:P7D}")
     private Duration ttl;
@@ -156,7 +158,7 @@ public class RefreshTokenService {
                 .familyId(familyId)
                 .expiresAt(expiresAt)
                 .userAgent(trim(request.getHeader("User-Agent"), 512))
-                .ipAddress(clientIp(request))
+                .ipAddress(clientIps.resolve(request))
                 .build();
         refreshTokens.save(token);
 
@@ -174,13 +176,6 @@ public class RefreshTokenService {
         }
     }
 
-    private static String clientIp(HttpServletRequest request) {
-        String fwd = request.getHeader("X-Forwarded-For");
-        if (fwd != null && !fwd.isBlank()) {
-            return trim(fwd.split(",")[0].trim(), 64);
-        }
-        return trim(request.getRemoteAddr(), 64);
-    }
 
     private static String trim(String value, int max) {
         if (value == null) return null;
