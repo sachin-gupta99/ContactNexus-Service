@@ -27,7 +27,8 @@ jobs:
           java-version: "21"
           cache: maven
 
-      # The Docker build skips tests, so this is where they run.
+      # Unit tests (*Test) and integration tests (*IT, embedded PostgreSQL 16,
+      # no Docker needed). The Docker build skips tests, so this is where they run.
       - name: mvn verify
         run: mvn -B -ntp verify
 
@@ -35,8 +36,10 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: surefire-reports
-          path: target/surefire-reports/
+          name: test-reports
+          path: |
+            target/surefire-reports/
+            target/failsafe-reports/
           retention-days: 7
 
   docker:
