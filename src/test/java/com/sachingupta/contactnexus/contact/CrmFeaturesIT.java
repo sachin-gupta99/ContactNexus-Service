@@ -63,9 +63,11 @@ class CrmFeaturesIT extends IntegrationTest {
                 {"firstName":"Priya","lastName":"Patel","email":"pp@x.com"}""");
         create("""
                 {"firstName":"Ramesh","email":"ramesh@x.com"}""");
+        create("""
+                {"firstName":"Ravi K","email":"rk2@x.com"}""");
 
         mvc.perform(get("/api/v1/contacts").param("q", "rvi").header("Authorization", auth()))
-                .andExpect(jsonPath("$.content[*].firstName", contains("Ravi")));
+                .andExpect(jsonPath("$.content[*].firstName", contains("Ravi", "Ravi K")));
         mvc.perform(get("/api/v1/contacts").param("q", "priay patle").header("Authorization", auth()))
                 .andExpect(jsonPath("$.content[*].firstName", contains("Priya")));
         // Two letters: plain "contains" only, no fuzzy noise.

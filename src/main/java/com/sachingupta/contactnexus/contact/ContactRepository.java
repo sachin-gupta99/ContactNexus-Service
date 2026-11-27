@@ -14,10 +14,11 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
 
     /**
      * {@code fuzzy} (lower-cased query, or "" to skip) adds typo-tolerant name
-     * matching with pg_trgm's {@code similarity()} against the first name, the
-     * last name and the full name: "rvi" finds "Ravi" (~0.29) but not "Ramesh"
-     * (~0.1). {@code word_similarity} was too loose for short queries: one shared
-     * first letter already scores 0.25 against a 3-letter term.
+     * matching with pg_trgm's {@code strict_word_similarity}, which compares the
+     * query with whole words of the full name: "rvi" finds "Ravi" and "Ravi K"
+     * (~0.29) but not "Ramesh" (~0.1). Plain {@code word_similarity} was too loose
+     * (one shared first letter scores 0.25 against a 3-letter term) and plain
+     * {@code similarity} too strict when the name field holds extra words.
      *
      * <p>{@code pattern} is a lower-cased LIKE pattern ("%" matches everything), which
      * avoids a nullable String parameter: Postgres can't infer the type of a bare
@@ -33,11 +34,8 @@ public interface ContactRepository extends JpaRepository<Contact, Long> {
               and (lower(c.firstName) like :pattern escape '\\'
                    or lower(c.lastName) like :pattern escape '\\'
                    or lower(c.email) like :pattern escape '\\'
-                   or (:fuzzy <> '' and (
-                          function('similarity', :fuzzy, lower(c.firstName)) >= 0.25
-                       or function('similarity', :fuzzy, lower(coalesce(c.lastName, ''))) >= 0.25
-                       or function('similarity', :fuzzy,
-                              lower(concat(c.firstName, ' ', coalesce(c.lastName, '')))) >= 0.25)))
+                   or (:fuzzy <> '' and function('strict_word_similarity', :fuzzy,
+                          lower(concat(c.firstName, ' ', coalesce(c.lastName, '')))) >= 0.25))
             """)
     Page<Contact> search(Long ownerId, String pattern, String fuzzy, boolean favoritesOnly, String tag, Pageable pageable);
 
