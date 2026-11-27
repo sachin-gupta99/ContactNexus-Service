@@ -48,10 +48,20 @@ services:
       - key: APP_EMAIL_FROM_NAME
         value: ContactNexus
 
+      # Client IP for rate limiting (see ClientIpResolver). Render sits behind
+      # Cloudflare, which sets CF-Connecting-IP itself; X-Forwarded-For is
+      # appended to, so callers can forge its left-most value.
+      - key: CLIENT_IP_EDGE_HEADER
+        value: CF-Connecting-IP
+
       # Secrets live in the Render dashboard, not in git. `sync: false` tells
       # the blueprint "I know this variable, don't overwrite the value the
       # dashboard already holds" - set these once manually.
       - key: JWT_SECRET
+        sync: false
+      # Must equal ORIGIN_SECRET in the Vercel project (sent as X-Origin-Secret
+      # on the /api rewrite). Generate with: openssl rand -base64 32
+      - key: PROXY_SECRET
         sync: false
       - key: DB_URL
         sync: false

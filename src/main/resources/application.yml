@@ -89,6 +89,14 @@ jwt:
   refresh-cookie-same-site: ${JWT_REFRESH_COOKIE_SAME_SITE:Lax}
 
 app:
+  client-ip:
+    # Shared secret Vercel adds as X-Origin-Secret on the /api rewrite (see the
+    # UI's vercel.json). When it matches, the left-most X-Forwarded-For value
+    # (which Vercel overwrites) is the visitor. Unset = old behaviour + a warning.
+    proxy-secret: ${PROXY_SECRET:}
+    # Header the edge in front of this service sets itself, used for requests
+    # that bypass Vercel. Render: CF-Connecting-IP. Empty = socket address.
+    edge-header: ${CLIENT_IP_EDGE_HEADER:}
   # Public URL of the UI - used to build password reset links that land users
   # back on /auth?mode=reset&token=... in the SPA.
   base-url: ${APP_BASE_URL:http://localhost:3000}
