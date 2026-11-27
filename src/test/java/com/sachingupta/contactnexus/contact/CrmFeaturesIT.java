@@ -94,6 +94,9 @@ class CrmFeaturesIT extends IntegrationTest {
                 .andExpect(jsonPath("$.lastContactedAt").value("2026-02-01T09:00:00Z"));
         mvc.perform(get("/api/v1/contacts/" + id + "/interactions").header("Authorization", auth()))
                 .andExpect(jsonPath("$[*].type", contains("CALL", "MEETING")));
+        create("{\"firstName\":\"Never\",\"email\":\"never@x.com\"}");
+        mvc.perform(get("/api/v1/contacts").param("sort", "lastContactedAt,desc").header("Authorization", auth()))
+                .andExpect(jsonPath("$.content[*].firstName", contains("Tim", "Never")));
 
         Number newerId = read(newer, "$.id");
         mvc.perform(delete("/api/v1/contacts/" + id + "/interactions/" + newerId).header("Authorization", auth()))

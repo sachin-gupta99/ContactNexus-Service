@@ -62,7 +62,18 @@ public class ContactController {
                         "Cannot sort by '%s'; allowed: %s".formatted(order.getProperty(), SORTABLE));
             }
         }
-        return PageResponse.from(service.list(principal.getId(), q, favorite, tag, pageable).map(mapper::toResponse));
+        return PageResponse.from(service.list(principal.getId(), q, favorite, tag, withNullsLast(pageable)).map(mapper::toResponse));
+    }
+
+    /**
+     * Postgres sorts NULLs first in descending order, which would put contacts
+     * you've never been in touch with at the top of "recently contacted".
+     */
+    private static Pageable withNullsLast(Pageable pageable) {
+        Sort sort = Sort.by(pageable.getSort().stream()
+                .map(o -> "lastContactedAt".equals(o.getProperty()) ? o.nullsLast() : o)
+                .toList());
+        return org.springframework.data.domain.PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), sort);
     }
 
     @GetMapping("/stats")
