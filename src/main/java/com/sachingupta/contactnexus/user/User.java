@@ -40,6 +40,11 @@ public class User {
     /** While in the future, sign-in is refused even with the right password. */
     private Instant lockedUntil;
 
+    /** Email the day before a contact's birthday. */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean birthdayReminders = true;
+
     @OneToOne(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.EAGER)
     private Profile profile;
 

@@ -1,0 +1,35 @@
+name: Daily jobs
+
+# Render's free instance sleeps after inactivity, so the in-app 08:00 schedule
+# can't be relied on. This calls the token-guarded job endpoint instead (which
+# also wakes the service). The app records every reminder it sends, so this and
+# the in-app schedule never double-send.
+#
+# Setup: repository secret JOBS_TOKEN, and the same value as JOBS_TOKEN on Render.
+
+on:
+  schedule:
+    - cron: "30 2 * * *" # 02:30 UTC = 08:00 IST
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  birthday-reminders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger birthday reminders
+        env:
+          JOBS_TOKEN: ${{ secrets.JOBS_TOKEN }}
+        run: |
+          if [ -z "$JOBS_TOKEN" ]; then
+            echo "JOBS_TOKEN secret is not set; skipping."
+            exit 0
+          fi
+          # A cold start can take ~30s, hence the generous timeout and retries.
+          curl --fail-with-body --silent --show-error \
+            --retry 3 --retry-delay 20 --retry-all-errors --max-time 90 \
+            -X POST -H "X-Jobs-Token: $JOBS_TOKEN" \
+            https://contactnexus-service.onrender.com/api/v1/internal/jobs/birthday-reminders

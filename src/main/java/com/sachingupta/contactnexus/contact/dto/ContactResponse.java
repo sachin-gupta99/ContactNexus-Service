@@ -29,6 +29,11 @@ public record ContactResponse(
         String instagramUrl,
         boolean favorite,
         List<String> tags,
+        String notes,
+        Instant lastContactedAt,
+        Integer birthdayMonth,
+        Integer birthdayDay,
+        Integer birthdayYear,
         Instant createdAt,
         Instant updatedAt) {
 
@@ -52,6 +57,11 @@ public record ContactResponse(
                 c.getInstagramUrl(),
                 c.isFavorite(),
                 tags,
+                c.getNotes(),
+                c.getLastContactedAt(),
+                c.getBirthdayMonth(),
+                c.getBirthdayDay(),
+                c.getBirthdayYear(),
                 c.getCreatedAt(),
                 c.getUpdatedAt());
     }
